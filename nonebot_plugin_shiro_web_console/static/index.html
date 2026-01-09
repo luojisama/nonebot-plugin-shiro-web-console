@@ -1,0 +1,1505 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NoneBot Web 控制台</title>
+    <style>
+        :root {
+            --primary-color: #0078d4;
+            --bg-main: #f3f2f1;
+            --bg-sidebar: #201f1e;
+            --bg-view: #ffffff;
+            --bg-card: #ffffff;
+            --bg-input: #ffffff;
+            --text-main: #323130;
+            --text-secondary: #605e5c;
+            --text-on-primary: #ffffff;
+            --border-color: #edebe9;
+            --nav-item-hover: #323130;
+            --msg-received-bg: #ffffff;
+            --msg-sent-bg: #0078d4;
+            --shadow: 0 2px 10px rgba(0,0,0,0.05);
+            --nav-width: 60px;
+            --sidebar-width: 300px;
+        }
+
+        [data-theme="dark"] {
+            --bg-main: #0a0a0a;
+            --bg-sidebar: #050505;
+            --bg-view: #121212;
+            --bg-card: #1e1e1e;
+            --bg-input: #252525;
+            --text-main: #e0e0e0;
+            --text-secondary: #aaaaaa;
+            --border-color: #333333;
+            --nav-item-hover: #2a2a2a;
+            --msg-received-bg: #252525;
+            --msg-sent-bg: #0078d4;
+            --shadow: 0 4px 20px rgba(0,0,0,0.5);
+        }
+
+        * { box-sizing: border-box; transition: background-color 0.2s, color 0.2s, border-color 0.2s; }
+        body, html { 
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
+            margin: 0; 
+            padding: 0;
+            background: var(--bg-main); 
+            color: var(--text-main);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #app { display: flex; width: 100vw; height: 100vh; filter: blur(5px); pointer-events: none; }
+        #app.authenticated { filter: none; pointer-events: auto; }
+
+        /* 导航栏 */
+        #nav-bar {
+            width: var(--nav-width);
+            background: var(--bg-sidebar);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 0;
+            gap: 20px;
+            z-index: 200;
+        }
+        .nav-item {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #adadad;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.2s;
+            font-size: 20px;
+        }
+        .nav-item:hover { background: var(--nav-item-hover); color: white; }
+        .nav-item.active { background: var(--nav-item-hover); color: var(--primary-color); }
+
+        /* 内容容器 */
+        #content-wrapper { flex: 1; display: flex; overflow: hidden; position: relative; }
+        .page { display: none; width: 100%; height: 100%; }
+        .page.active { display: flex; }
+
+        /* 登录遮罩 */
+        #login-mask {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center;
+            z-index: 1000; transition: opacity 0.3s;
+        }
+        #login-mask.hidden { opacity: 0; pointer-events: none; }
+        #login-box {
+            background: var(--bg-card); padding: 30px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            width: 380px; text-align: center; display: flex; flex-direction: column; gap: 15px;
+            color: var(--text-main);
+        }
+        .login-tabs { display: flex; border-bottom: 1px solid var(--border-color); margin-bottom: 10px; }
+        .login-tab { flex: 1; padding: 10px; cursor: pointer; color: var(--text-secondary); font-size: 0.9em; transition: all 0.2s; }
+        .login-tab.active { color: var(--primary-color); border-bottom: 2px solid var(--primary-color); font-weight: bold; }
+        .login-input-group { display: flex; flex-direction: column; gap: 10px; text-align: left; }
+        .login-input-group input { padding: 12px; border: 1px solid var(--border-color); border-radius: 6px; outline: none; width: 100%; background: var(--bg-input); color: var(--text-main); }
+        .login-input-group input:focus { border-color: var(--primary-color); }
+        
+        /* 侧边栏 */
+        #sidebar {
+            width: var(--sidebar-width);
+            background: var(--bg-view);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+        }
+        .sidebar-header { padding: 20px; border-bottom: 1px solid var(--border-color); font-weight: bold; font-size: 1.2em; background: var(--bg-view); color: var(--text-main); }
+        #chat-list { flex: 1; overflow-y: auto; background: var(--bg-view); }
+        .chat-item {
+            display: flex; align-items: center; padding: 12px 20px; cursor: pointer;
+            transition: background 0.2s; border-bottom: 1px solid var(--border-color);
+            color: var(--text-main);
+        }
+        .chat-item:hover { background: var(--bg-main); }
+        .chat-item.active { background: var(--bg-main); border-left: 4px solid var(--primary-color); }
+        .avatar { width: 36px; height: 36px; border-radius: 50%; margin-right: 12px; background: var(--border-color); flex-shrink: 0; }
+        
+        /* 主内容区 */
+        .main-view { flex: 1; display: flex; flex-direction: column; background: var(--bg-view); color: var(--text-main); }
+        #chat-header, .page-header {
+            padding: 10px 15px; border-bottom: 1px solid var(--border-color);
+            display: flex; align-items: center; justify-content: flex-start;
+            min-height: 60px; background: var(--bg-view); gap: 10px;
+        }
+        .back-btn {
+            display: none; width: 32px; height: 32px; align-items: center; justify-content: center;
+            border-radius: 50%; cursor: pointer; color: var(--text-main); font-size: 1.2em;
+            transition: background 0.2s;
+        }
+        .back-btn:hover { background: var(--bg-main); }
+        #messages, .page-content { flex: 1; padding: 20px; overflow-y: auto; background: var(--bg-main); }
+        #messages { display: flex; flex-direction: column; gap: 15px; }
+
+        /* 插件页样式 */
+        .plugin-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; }
+        .plugin-card {
+            background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px;
+            padding: 20px; display: flex; flex-direction: column; gap: 12px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); color: var(--text-main);
+            position: relative; overflow: hidden;
+        }
+        .plugin-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); border-color: var(--primary-color); }
+        .plugin-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+        .plugin-name { font-weight: bold; font-size: 1.1em; color: var(--text-main); flex: 1; }
+        .plugin-version { font-size: 0.75em; color: var(--primary-color); background: rgba(0, 120, 212, 0.1); padding: 2px 8px; border-radius: 20px; font-weight: 500; }
+        .plugin-desc { font-size: 0.9em; color: var(--text-secondary); line-height: 1.5; height: 2.8em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        
+        .plugin-footer { display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border-color); }
+        .plugin-actions { display: flex; gap: 8px; }
+        .btn-icon { 
+            width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; 
+            border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-main);
+            color: var(--text-secondary); cursor: pointer; text-decoration: none; transition: all 0.2s;
+        }
+        .btn-icon:hover { background: var(--primary-color); color: white; border-color: var(--primary-color); }
+        .btn-config { 
+            padding: 6px 16px; border-radius: 6px; border: 1px solid var(--primary-color); 
+            background: transparent; color: var(--primary-color); cursor: pointer; font-weight: 500;
+            transition: all 0.2s;
+        }
+        .btn-config:hover { background: var(--primary-color); color: white; }
+
+        /* 插件标签 */
+        .plugin-tag { font-size: 0.7em; padding: 2px 8px; border-radius: 20px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        .tag-official { background: rgba(255, 152, 0, 0.15); color: #ef6c00; }
+        .tag-builtin { background: rgba(76, 175, 80, 0.15); color: #2e7d32; }
+        .tag-store { background: rgba(33, 150, 243, 0.15); color: #1565c0; }
+        .tag-local { background: rgba(158, 158, 158, 0.15); color: #616161; }
+        .tag-valid { background: rgba(40, 167, 69, 0.15); color: #28a745; }
+        .tag-invalid { background: rgba(220, 53, 69, 0.15); color: #dc3545; }
+        [data-theme="dark"] .tag-official { background: rgba(255, 152, 0, 0.2); color: #ffb74d; }
+        [data-theme="dark"] .tag-builtin { background: rgba(76, 175, 80, 0.2); color: #81c784; }
+        [data-theme="dark"] .tag-store { background: rgba(33, 150, 243, 0.2); color: #64b5f6; }
+        [data-theme="dark"] .tag-local { background: rgba(158, 158, 158, 0.2); color: #bdbdbd; }
+        [data-theme="dark"] .tag-valid { background: rgba(40, 167, 69, 0.2); color: #81c784; }
+        [data-theme="dark"] .tag-invalid { background: rgba(220, 53, 69, 0.2); color: #f87171; }
+
+        /* 插件分组样式 */
+        .plugin-category-group { margin-bottom: 30px; }
+        .plugin-category-title { 
+            font-size: 1.1em; 
+            font-weight: bold; 
+            margin-bottom: 15px; 
+            padding-bottom: 8px; 
+            border-bottom: 2px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-main);
+        }
+        .plugin-category-count {
+            font-size: 0.75em;
+            background: var(--border-color);
+            padding: 2px 8px;
+            border-radius: 10px;
+            color: var(--text-secondary);
+        }
+
+        /* 商店卡片样式 */
+        .store-card {
+            background: var(--bg-card);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .store-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); border-color: var(--primary-color); }
+        .store-name { font-weight: bold; font-size: 1.1em; color: var(--primary-color); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+        .store-name:hover { text-decoration: underline; }
+        .store-desc { font-size: 0.9em; color: var(--text-secondary); line-height: 1.5; flex: 1; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .store-meta { font-size: 0.75em; color: var(--text-secondary); display: flex; flex-wrap: wrap; gap: 10px; padding: 8px 0; }
+        .store-meta span { display: flex; align-items: center; gap: 4px; }
+        .store-footer { display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border-color); }
+        .store-btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.85em; font-weight: 600; transition: all 0.2s; }
+        .store-btn-install { background: var(--primary-color); color: white; }
+        .store-btn-update { background: rgba(40, 167, 69, 0.15); color: #28a745; border: 1px solid #28a745; }
+        .store-btn-update:hover { background: #28a745; color: white; }
+        .store-btn-uninstall { background: rgba(220, 53, 69, 0.15); color: #dc3545; border: 1px solid #dc3545; }
+        .store-btn-uninstall:hover { background: #dc3545; color: white; }
+        .store-btn:disabled { background: var(--bg-main); color: var(--text-secondary); border: 1px solid var(--border-color); cursor: not-allowed; }
+
+        /* 配置弹窗 */
+        #config-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); display: none; align-items: center; justify-content: center;
+            z-index: 1100;
+        }
+        #config-box {
+            background: var(--bg-card); width: 600px; max-width: 90%; max-height: 80vh;
+            border-radius: 8px; display: flex; flex-direction: column; color: var(--text-main);
+        }
+        .modal-header { padding: 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; font-weight: bold; }
+        .modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+        .modal-footer { padding: 15px 20px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 10px; }
+        .config-item { margin-bottom: 15px; }
+        .config-item label { display: block; margin-bottom: 5px; font-weight: 500; font-size: 0.9em; }
+        .config-item input, .config-item select, .config-item textarea { width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-input); color: var(--text-main); }
+        
+        /* 消息样式升级 */
+        .message-wrapper { display: flex; width: 100%; gap: 10px; }
+        .message-wrapper.sent { flex-direction: row-reverse; }
+        .msg-avatar { width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; background: var(--border-color); }
+        .message { max-width: 70%; padding: 10px 15px; border-radius: 8px; line-height: 1.5; position: relative; word-break: break-all; box-shadow: var(--shadow); }
+        .message img { 
+            max-width: 100%; 
+            max-height: 400px; 
+            border-radius: 4px; 
+            display: block; 
+            margin: 5px 0;
+            cursor: zoom-in;
+            object-fit: contain;
+        }
+        .message.received { background: var(--msg-received-bg); color: var(--text-main); border: 1px solid var(--border-color); }
+        .message.sent { background: var(--msg-sent-bg); color: white; }
+        .msg-meta { font-size: 0.75em; margin-bottom: 4px; color: var(--text-secondary); }
+        
+        /* 输入框 */
+        #input-area { padding: 20px; border-top: 1px solid var(--border-color); display: flex; gap: 10px; background: var(--bg-view); }
+        #msg-input { flex: 1; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; outline: none; background: var(--bg-input); color: var(--text-main); }
+        #msg-input:focus { border-color: var(--primary-color); }
+        #send-btn { padding: 10px 25px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; }
+        #send-btn:hover { opacity: 0.9; }
+        #send-btn:disabled { background: #ccc; cursor: not-allowed; }
+
+        .tag { font-size: 0.7em; padding: 2px 6px; border-radius: 10px; margin-left: 5px; vertical-align: middle; }
+        .tag-group { background: #e1f5fe; color: #01579b; }
+        .tag-private { background: #f3e5f5; color: #4a148c; }
+
+        .sub-nav {
+            display: flex;
+            background: var(--bg-view);
+            padding: 0 20px;
+            border-bottom: 1px solid var(--border-color);
+            gap: 20px;
+        }
+        .sub-nav-item {
+            padding: 12px 10px;
+            font-size: 0.9em;
+            color: var(--text-secondary);
+            cursor: pointer;
+            position: relative;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .sub-nav-item:hover { color: var(--primary-color); }
+        .sub-nav-item.active { color: var(--primary-color); }
+        .sub-nav-item.active::after {
+            content: "";
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--primary-color);
+            border-radius: 3px 3px 0 0;
+        }
+
+        /* 移动端适配 */
+        @media (max-width: 768px) {
+            :root { 
+                --nav-width: 100%; 
+                --nav-height: 60px;
+                --sidebar-width: 100%; 
+            }
+            
+            #app { flex-direction: column; }
+            
+            #nav-bar {
+                width: 100%;
+                height: var(--nav-height);
+                flex-direction: row;
+                order: 2; /* 放到下面 */
+                padding: 0;
+                padding-bottom: env(safe-area-inset-bottom);
+                justify-content: space-around;
+                border-top: 1px solid var(--border-color);
+                background: var(--bg-view);
+            }
+            
+            .nav-item { flex: 1; height: 100%; border-radius: 0; font-size: 24px; }
+            
+            #content-wrapper { order: 1; height: calc(100vh - var(--nav-height)); }
+
+            #sidebar {
+                position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+                z-index: 100; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                border-right: none; background: var(--bg-view);
+            }
+            #sidebar.hidden { transform: translateX(-100%); }
+            #sidebar.hidden ~ .main-view .back-btn { display: flex; }
+            
+            .main-view { width: 100%; height: 100%; flex: 1; }
+            .message { max-width: 85%; }
+            .message img { max-height: 300px; }
+            #login-box { width: 90%; padding: 25px; }
+            
+            /* 仪表盘卡片调整 */
+            .page-content { padding: 15px; }
+            .dashboard-grid { grid-template-columns: 1fr !important; }
+            
+            /* 插件列表调整 */
+            .plugin-list { grid-template-columns: 1fr !important; gap: 15px; }
+            
+            /* 弹窗调整 */
+            #config-box { width: 95%; max-height: 90vh; }
+            #store-box { width: 95% !important; height: 90vh !important; }
+            
+            /* 防止 iOS 输入框自动缩放 */
+            input, select, textarea { font-size: 16px !important; }
+            
+            .modal-body { padding: 15px; }
+            .config-item { margin-bottom: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="login-mask">
+        <div id="login-box">
+            <h2 style="margin: 0;">控制台登录</h2>
+            <div class="login-tabs">
+                <div class="login-tab active" onclick="switchLoginTab('code')">验证码登录</div>
+                <div class="login-tab" onclick="switchLoginTab('password')">密码登录</div>
+            </div>
+            
+            <div id="login-code-section" class="login-input-group">
+                <p style="font-size: 0.85em; color: #666; margin: 0;">验证码将发送至管理员 QQ</p>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="code-input" placeholder="6 位验证码" maxlength="6">
+                    <button id="send-code-btn" style="padding: 10px; background: #0078d4; color: white; border: none; border-radius: 6px; cursor: pointer; min-width: 100px;">获取</button>
+                </div>
+            </div>
+
+            <div id="login-password-section" class="login-input-group" style="display: none;">
+                <p style="font-size: 0.85em; color: #666; margin: 0;">请输入管理员密码</p>
+                <input type="password" id="password-input" placeholder="管理员密码">
+            </div>
+
+            <button id="login-btn" style="width: 100%; padding: 12px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1.1em; font-weight: bold; margin-top: 10px;">立即登录</button>
+            <div id="login-msg" style="font-size: 0.9em; min-height: 1.2em;"></div>
+        </div>
+    </div>
+    <div id="app">
+        <div id="nav-bar">
+            <div class="nav-item active" onclick="showPage('home')" title="首页">🏠</div>
+            <div class="nav-item" onclick="showPage('chat')" title="聊天">💬</div>
+            <div class="nav-item" onclick="showPage('plugins')" title="插件管理">🧩</div>
+            <div class="nav-item" onclick="showPage('logs')" title="日志">📜</div>
+            <div class="nav-item" onclick="showPage('settings')" title="设置">⚙️</div>
+        </div>
+        <div id="content-wrapper">
+            <!-- 首页/仪表盘 -->
+            <div id="page-home" class="page active">
+                <div class="main-view">
+                    <div class="page-header">
+                        <div style="font-weight: bold; font-size: 1.2em;">仪表盘</div>
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <button id="theme-toggle-btn" onclick="toggleThemeManual()" style="background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-main); padding: 5px 12px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 0.9em; transition: all 0.2s;">
+                                <span id="theme-icon">🌙</span> <span id="theme-text">深色模式</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="page-content">
+                        <div class="dashboard-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                            <!-- 机器人状态卡片 -->
+                            <div style="background: var(--bg-card); padding: 25px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: var(--shadow); display: flex; flex-direction: column;">
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+                                    <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;">🤖 机器人状态</h3>
+                                    <div style="display: flex; gap: 8px;">
+                                        <button onclick="handleBotAction('reboot')" class="btn-icon" title="重启 Bot" style="color: #ffc107; border-color: #ffc107; background: rgba(255, 193, 7, 0.1); font-size: 1.2em; font-weight: bold; line-height: 1;">↻</button>
+                                        <button onclick="handleBotAction('shutdown')" class="btn-icon" title="关闭 Bot" style="color: #dc3545; border-color: #dc3545; background: rgba(220, 53, 69, 0.1); font-size: 1.2em; font-weight: bold; line-height: 1;">⏻</button>
+                                    </div>
+                                </div>
+                                <div id="bot-status-container" style="flex: 1;">
+                                    <div style="text-align: center; color: #999; padding: 20px;">正在获取机器人状态...</div>
+                                </div>
+                            </div>
+                            
+                            <!-- 设备运行状态 -->
+                            <div style="background: var(--bg-card); padding: 25px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: var(--shadow);">
+                                <h3 style="margin-top: 0; display: flex; align-items: center; gap: 8px;">💻 设备运行情况</h3>
+                                <div id="system-status-container">
+                                    <div class="status-item" style="margin-bottom: 15px;">
+                                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                            <span>CPU 使用率</span>
+                                            <span id="cpu-val">-</span>
+                                        </div>
+                                        <div style="height: 8px; background: var(--border-color); border-radius: 4px; overflow: hidden;">
+                                            <div id="cpu-bar" style="height: 100%; width: 0%; background: var(--primary-color); transition: width 0.5s;"></div>
+                                        </div>
+                                    </div>
+                                    <div class="status-item" style="margin-bottom: 15px;">
+                                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                            <span>内存使用 (RAM)</span>
+                                            <span id="mem-val">-</span>
+                                        </div>
+                                        <div style="height: 8px; background: var(--border-color); border-radius: 4px; overflow: hidden;">
+                                            <div id="mem-bar" style="height: 100%; width: 0%; background: #28a745; transition: width 0.5s;"></div>
+                                        </div>
+                                        <div id="mem-details" style="font-size: 0.8em; color: var(--text-secondary); margin-top: 8px;">-</div>
+                                    </div>
+                                    <div class="status-item">
+                                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                            <span>磁盘使用 (DISK)</span>
+                                            <span id="disk-val">-</span>
+                                        </div>
+                                        <div style="height: 8px; background: var(--border-color); border-radius: 4px; overflow: hidden;">
+                                            <div id="disk-bar" style="height: 100%; width: 0%; background: #ffc107; transition: width 0.5s;"></div>
+                                        </div>
+                                        <div id="disk-details" style="font-size: 0.8em; color: var(--text-secondary); margin-top: 8px;">-</div>
+                                    </div>
+                                    <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
+                                    <div style="font-size: 0.9em; color: var(--text-secondary); display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                        <div id="sys-uptime" style="grid-column: 1 / -1;">运行时间: -</div>
+                                        <div id="sys-net-sent">发送流量: -</div>
+                                        <div id="sys-net-recv">接收流量: -</div>
+                                        <div id="sys-os">操作系统: -</div>
+                                        <div id="sys-py">Python: -</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 聊天页面 -->
+            <div id="page-chat" class="page">
+                <div id="sidebar" class="hidden">
+                    <div class="sidebar-header">消息列表</div>
+                    <div id="chat-list">
+                        <div style="padding: 20px; text-align: center; color: var(--text-secondary);">加载中...</div>
+                    </div>
+                </div>
+                <div id="main" class="main-view">
+                    <div id="chat-header">
+                        <div class="header-left">
+                            <div class="back-btn" onclick="toggleSidebar(true)">←</div>
+                            <div id="current-chat-name">请选择一个聊天</div>
+                        </div>
+                        <div id="status" style="font-size: 0.85em; flex-shrink: 0;">● 已连接</div>
+                    </div>
+                    <div id="messages">
+                        <div style="margin: auto; color: var(--text-secondary);">选择左侧列表开始聊天</div>
+                    </div>
+                    <div id="input-area" style="background: var(--bg-view); border-top: 1px solid var(--border-color);">
+                        <input type="text" id="msg-input" placeholder="输入消息..." disabled style="background: var(--bg-input); color: var(--text-main); border: 1px solid var(--border-color);">
+                        <button id="send-btn" disabled>发送</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 插件页面 -->
+            <div id="page-plugins" class="page">
+                <div class="main-view">
+                    <div class="page-header" style="flex-direction: column; align-items: stretch; height: auto; padding: 0;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 15px 25px; border-bottom: 1px solid var(--border-color);">
+                            <div style="font-weight: bold; font-size: 1.2em;">插件管理</div>
+                            <div id="plugin-search-container" style="flex: 1; max-width: 400px; margin-left: 20px;">
+                                <input type="text" id="local-plugin-search" placeholder="查找已安装插件..." style="width: 100%; padding: 6px 15px; border: 1px solid var(--border-color); border-radius: 20px; background: var(--bg-input); color: var(--text-main); font-size: 0.85em; outline: none;" oninput="filterLocalPlugins()">
+                                <input type="text" id="store-search" placeholder="在商店中搜索插件..." style="width: 100%; padding: 6px 15px; border: 1px solid var(--border-color); border-radius: 20px; background: var(--bg-input); color: var(--text-main); font-size: 0.85em; outline: none; display: none;" oninput="filterStore()">
+                            </div>
+                        </div>
+                        <div class="sub-nav">
+                            <div class="sub-nav-item active" id="tab-local" onclick="switchPluginTab('local')">已安装</div>
+                            <div class="sub-nav-item" id="tab-store" onclick="switchPluginTab('store')">插件商店</div>
+                        </div>
+                    </div>
+                    <div class="page-content" id="plugin-content" style="padding: 20px; background: var(--bg-main);">
+                        <!-- 本地插件视图 -->
+                        <div id="local-plugins-view">
+                            <div id="plugin-list">
+                                <!-- 插件卡片将在此处分组渲染 -->
+                            </div>
+                        </div>
+                        <!-- 商店视图 -->
+                        <div id="store-plugins-view" style="display: none;">
+                            <div id="store-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px;">
+                                <!-- 商店插件卡片 -->
+                            </div>
+                            <div id="store-status-bar" style="margin-top: 20px; padding: 10px 0; font-size: 0.85em; color: var(--text-secondary); border-top: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                                <span id="store-count">正在加载商店数据...</span>
+                                <span id="action-status" style="font-weight: bold; color: var(--primary-color);"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 日志页面 -->
+            <div id="page-logs" class="page">
+                <div class="main-view">
+                    <div class="page-header">
+                        <div style="font-weight: bold; font-size: 1.2em;">NoneBot 日志</div>
+                        <div style="display: flex; gap: 10px;">
+                            <button onclick="fetchLogs()" style="padding: 5px 12px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">刷新</button>
+                            <button onclick="document.getElementById('log-viewer').innerHTML = ''" style="padding: 5px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">清屏</button>
+                        </div>
+                    </div>
+                    <div class="page-content" style="background: #1e1e1e; padding: 0; overflow: hidden; display: flex; flex-direction: column;">
+                        <div id="log-viewer" style="flex: 1; padding: 15px; overflow-y: auto; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; line-height: 1.6; color: #d4d4d4;">
+                            <div style="color: #888;">正在加载日志...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 设置页面 -->
+            <div id="page-settings" class="page">
+                <div class="main-view">
+                    <div class="page-header">
+                        <div style="font-weight: bold; font-size: 1.2em;">系统设置</div>
+                    </div>
+                    <div class="page-content">
+                        <div class="settings-group">
+                            <div class="settings-title">关于</div>
+                            <div class="setting-item">
+                                <div>
+                                    <div style="font-weight: 500;">NoneBot Web Console</div>
+                                    <div style="font-size: 0.85em; color: var(--text-secondary);">版本 v1.2.0</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 配置弹窗 -->
+    <div id="config-modal">
+        <div id="config-box">
+            <div class="modal-header">
+                <span id="modal-title">插件配置</span>
+                <span style="cursor: pointer;" onclick="closeConfig()">✕</span>
+            </div>
+            <div id="modal-body" class="modal-body">
+                <!-- 配置项表单将在此处生成 -->
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeConfig()" style="padding: 8px 15px; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-main); border-radius: 4px; cursor: pointer;">取消</button>
+                <button id="save-config-btn" style="padding: 8px 15px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer;">保存配置</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentChatId = null;
+        let ws = null;
+        let authToken = localStorage.getItem('web_console_token');
+        let currentEditingPlugin = null;
+
+        const appEl = document.getElementById('app');
+        const loginMask = document.getElementById('login-mask');
+        const codeInput = document.getElementById('code-input');
+        const sendCodeBtn = document.getElementById('send-code-btn');
+        const loginBtn = document.getElementById('login-btn');
+        const loginMsg = document.getElementById('login-msg');
+        const sidebar = document.getElementById('sidebar');
+
+        // 页面切换逻辑
+        function showPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById(`page-${pageId}`).classList.add('active');
+            
+            // 更新导航图标激活状态
+            const navItems = document.querySelectorAll('.nav-item');
+            if (pageId === 'home') { navItems[0].classList.add('active'); fetchStatus(); }
+            else if (pageId === 'chat') {
+                navItems[1].classList.add('active');
+                // 移动端切换到聊天页时，如果没有选择聊天，则显示侧边栏
+                if (window.innerWidth <= 768 && !currentChatId) {
+                    toggleSidebar(true);
+                }
+            }
+            else if (pageId === 'plugins') { 
+                navItems[2].classList.add('active'); 
+                fetchPlugins(); 
+            }
+            else if (pageId === 'logs') { navItems[3].classList.add('active'); fetchLogs(); }
+            else if (pageId === 'settings') navItems[4].classList.add('active');
+
+            // 移动端切换到非聊天页时隐藏侧边栏
+            if (window.innerWidth <= 768 && pageId !== 'chat') {
+                toggleSidebar(false);
+            }
+        }
+
+        function switchPluginTab(tab) {
+            // 更新标签样式
+            document.querySelectorAll('.sub-nav-item').forEach(item => item.classList.remove('active'));
+            document.getElementById(`tab-${tab}`).classList.add('active');
+            
+            // 切换视图
+            document.getElementById('local-plugins-view').style.display = tab === 'local' ? 'block' : 'none';
+            document.getElementById('store-plugins-view').style.display = tab === 'store' ? 'block' : 'none';
+            
+            // 切换搜索框
+            document.getElementById('local-plugin-search').style.display = tab === 'local' ? 'block' : 'none';
+            document.getElementById('store-search').style.display = tab === 'store' ? 'block' : 'none';
+            
+            if (tab === 'store') {
+                openStore();
+            } else {
+                fetchPlugins();
+            }
+        }
+
+        async function fetchStatus() {
+            try {
+                const res = await authorizedFetch('/web_console/api/status');
+                const data = await res.json();
+                
+                // 渲染机器人状态
+                const botContainer = document.getElementById('bot-status-container');
+                if (data.bots && data.bots.length > 0) {
+                    botContainer.innerHTML = data.bots.map(bot => `
+                        <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px;">
+                            <img src="${bot.avatar}" style="width: 60px; height: 60px; border-radius: 50%; border: 2px solid #eee;">
+                            <div style="flex: 1;">
+                                <div style="font-weight: bold; font-size: 1.1em;">${bot.nickname}</div>
+                                <div style="color: #666; font-size: 0.9em;">ID: ${bot.id}</div>
+                            </div>
+                            <div style="padding: 4px 10px; border-radius: 20px; font-size: 0.85em; background: ${bot.status === '在线' ? '#e6f4ea' : '#fce8e6'}; color: ${bot.status === '在线' ? '#1e7e34' : '#c5221f'};">
+                                ${bot.status}
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    botContainer.innerHTML = '<div style="text-align: center; color: #999; padding: 20px;">未发现已连接的机器人</div>';
+                }
+
+                // 渲染系统状态
+                document.getElementById('cpu-val').textContent = data.system.cpu;
+                document.getElementById('cpu-bar').style.width = data.system.cpu;
+                document.getElementById('mem-val').textContent = data.system.memory;
+                document.getElementById('mem-bar').style.width = data.system.memory;
+                document.getElementById('mem-details').textContent = `已用 ${data.system.memory_used} / 总共 ${data.system.memory_total}`;
+                
+                // 新增磁盘状态更新
+                document.getElementById('disk-val').textContent = data.system.disk;
+                document.getElementById('disk-bar').style.width = data.system.disk;
+                document.getElementById('disk-details').textContent = `已用 ${data.system.disk_used} / 总共 ${data.system.disk_total}`;
+                
+                // 新增系统详细信息更新
+                document.getElementById('sys-uptime').textContent = `运行时间: ${data.system.uptime}`;
+                document.getElementById('sys-net-sent').textContent = `发送流量: ${data.system.net_sent}`;
+                document.getElementById('sys-net-recv').textContent = `接收流量: ${data.system.net_recv}`;
+                document.getElementById('sys-os').textContent = `操作系统: ${data.system.os}`;
+                document.getElementById('sys-py').textContent = `Python: ${data.system.python}`;
+            } catch (e) {
+                console.error('获取状态失败', e);
+            }
+        }
+
+        async function handleBotAction(action) {
+            const actionText = action === 'reboot' ? '重启' : '关闭';
+            if (!confirm(`确定要${actionText}机器人吗？`)) return;
+            
+            try {
+                const res = await authorizedFetch('/web_console/api/system/action', {
+                    method: 'POST',
+                    body: JSON.stringify({ action })
+                });
+                const data = await res.json();
+                
+                if (data.error) {
+            // 使用更友好的错误显示方式
+            const errorArea = document.createElement('div');
+            errorArea.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:var(--bg-card); border:1px solid var(--border-color); padding:25px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.5); z-index:10001; max-width:90vw; width:500px;';
+            errorArea.innerHTML = `
+                <h3 style="margin-top:0; color:#dc3545;">❌ 操作失败</h3>
+                <div style="margin:15px 0; white-space:pre-wrap; font-size:14px; max-height:300px; overflow-y:auto; border-left:4px solid #dc3545; padding-left:15px;">${data.error}</div>
+                <button onclick="this.parentElement.remove()" class="btn-primary" style="width:100%;">确定</button>
+            `;
+            document.body.appendChild(errorArea);
+        } else {
+                    alert(data.msg || '操作已发送');
+                    if (action === 'shutdown') {
+                        // 关闭后遮罩提示
+                        document.body.innerHTML = '<div style="height: 100vh; display: flex; align-items: center; justify-content: center; background: #000; color: #fff; font-family: sans-serif;"><h1>Bot 已关闭</h1></div>';
+                    } else {
+                        // 重启后提示并刷新
+                        setTimeout(() => window.location.reload(), 5000);
+                    }
+                }
+            } catch (e) {
+                alert('发送请求失败，Bot 可能正在处理中...');
+            }
+        }
+
+        async function fetchLogs() {
+            const viewer = document.getElementById('log-viewer');
+            try {
+                const res = await authorizedFetch('/web_console/api/logs');
+                const logs = await res.json();
+                viewer.innerHTML = logs.map(log => {
+                    let color = '#d4d4d4';
+                    if (log.level === 'ERROR') color = '#f44747';
+                    else if (log.level === 'WARNING') color = '#cca700';
+                    else if (log.level === 'SUCCESS') color = '#6a9955';
+                    else if (log.level === 'DEBUG') color = '#b5cea8';
+                    
+                    return `<div style="margin-bottom: 4px;">
+                        <span style="color: #888;">[${log.time}]</span>
+                        <span style="color: ${color}; font-weight: bold; margin: 0 5px;">${log.level.padEnd(7)}</span>
+                        <span style="color: #569cd6;">${log.module}</span>
+                        <span style="color: #ce9178;"> - ${log.message}</span>
+                    </div>`;
+                }).join('');
+                viewer.scrollTop = viewer.scrollHeight;
+            } catch (e) {
+                viewer.innerHTML = '<div style="color: #f44747;">获取日志失败</div>';
+            }
+        }
+
+        // 主题切换
+        function toggleTheme(isDark) {
+            const icon = document.getElementById('theme-icon');
+            const text = document.getElementById('theme-text');
+            
+            if (isDark) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                localStorage.setItem('web-console-theme', 'dark');
+                if (icon) icon.textContent = '☀️';
+                if (text) text.textContent = '浅色模式';
+            } else {
+                document.documentElement.removeAttribute('data-theme');
+                localStorage.setItem('web-console-theme', 'light');
+                if (icon) icon.textContent = '🌙';
+                if (text) text.textContent = '深色模式';
+            }
+        }
+
+        function toggleThemeManual() {
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            toggleTheme(!isDark);
+        }
+
+        function initTheme() {
+            const savedTheme = localStorage.getItem('web-console-theme');
+            const isDark = savedTheme === 'dark';
+            toggleTheme(isDark);
+        }
+
+        let storeData = [];
+        let installedPluginModules = [];
+
+        async function openStore() {
+            // 获取已安装插件列表，用于判断状态
+            try {
+                const res = await authorizedFetch('/web_console/api/plugins');
+                const plugins = await res.json();
+                installedPluginModules = plugins.map(p => p.module);
+            } catch (e) {}
+
+            if (storeData.length === 0) {
+                try {
+                    const res = await authorizedFetch('/web_console/api/store');
+                    storeData = await res.json();
+                    if (storeData.error) {
+                        document.getElementById('store-list').innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #dc3545;">${storeData.error}</div>`;
+                        return;
+                    }
+                } catch (e) {
+                    document.getElementById('store-list').innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #dc3545;">获取商店数据失败</div>`;
+                    return;
+                }
+            }
+            renderStore(storeData);
+        }
+
+        function renderStore(plugins) {
+            const listEl = document.getElementById('store-list');
+            const countEl = document.getElementById('store-count');
+            countEl.textContent = `共发现 ${plugins.length} 个插件`;
+            
+            listEl.innerHTML = plugins.map(p => {
+                const isInstalled = installedPluginModules.includes(p.module_name);
+                const isValid = p.valid !== false; // 如果不存在 valid 字段，默认为 true
+                const isOfficial = p.is_official === true;
+                
+                return `
+                    <div class="store-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; min-width: 0;">
+                            <a href="${p.homepage || '#'}" target="_blank" class="store-name" title="${p.name}">${p.name}</a>
+                            <div style="display: flex; gap: 4px; flex-shrink: 0; align-items: center;">
+                                ${isOfficial ? `<span class="plugin-tag tag-official" style="font-size: 0.6em; padding: 1px 5px; line-height: 1.4;">官方</span>` : ''}
+                                <span class="plugin-tag ${isValid ? 'tag-valid' : 'tag-invalid'}" style="font-size: 0.6em; padding: 1px 5px; line-height: 1.4;">
+                                    ${isValid ? '已通过' : '未通过'}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="store-desc" title="${p.desc}">${p.desc}</div>
+                        <div class="store-meta">
+                            <span>👤 ${p.author}</span>
+                            <span>📦 ${p.version}</span>
+                        </div>
+                        <div class="store-footer">
+                            <div style="display: flex; gap: 8px;">
+                                ${isInstalled ? 
+                                    `<button onclick="handleStoreAction('update', '${p.project_link}')" class="store-btn store-btn-update">更新</button>
+                                     <button onclick="handleStoreAction('uninstall', '${p.project_link}')" class="store-btn store-btn-uninstall">卸载</button>` :
+                                    `<button onclick="handleStoreAction('install', '${p.project_link}')" class="store-btn store-btn-install" ${!isValid ? 'style="opacity: 0.6;"' : ''}>安装</button>`
+                                }
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function filterStore() {
+            const keyword = document.getElementById('store-search').value.toLowerCase();
+            const filtered = storeData.filter(p => {
+                const name = p.name.toLowerCase();
+                const desc = p.desc.toLowerCase();
+                const author = p.author.toLowerCase();
+                const module = p.module_name.toLowerCase();
+                const isValid = p.valid !== false;
+                
+                // 支持搜索 "已通过", "未通过", "官方"
+                const statusMatch = (keyword === '已通过' && isValid) || 
+                                  (keyword === '未通过' && !isValid) ||
+                                  (keyword === '官方' && p.is_official);
+
+                return name.includes(keyword) || 
+                       desc.includes(keyword) || 
+                       author.includes(keyword) ||
+                       module.includes(keyword) ||
+                       statusMatch;
+            });
+            renderStore(filtered);
+        }
+
+        async function handleStoreAction(action, plugin) {
+            const statusEl = document.getElementById('action-status');
+            const btns = document.querySelectorAll('.store-btn');
+            
+            if (!confirm(`确定要执行 ${action} 操作吗？`)) return;
+            
+            btns.forEach(b => b.disabled = true);
+            statusEl.textContent = `正在 ${action}... 请稍候`;
+            
+            try {
+                const res = await authorizedFetch('/web_console/api/store/action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action, plugin })
+                });
+                const data = await res.json();
+                
+                if (data.error) {
+                    alert(`操作失败: ${data.error}`);
+                } else {
+                    alert(`${data.msg}\n\n部分插件安装后需要手动在机器人配置中加载或重启生效。`);
+                    // 刷新插件列表
+                    fetchPlugins();
+                    // 刷新商店显示状态
+                    const res2 = await authorizedFetch('/web_console/api/plugins');
+                    const plugins = await res2.json();
+                    installedPluginModules = plugins.map(p => p.module);
+                    filterStore();
+                }
+            } catch (e) {
+                alert('请求异常');
+            } finally {
+                btns.forEach(b => b.disabled = false);
+                statusEl.textContent = '';
+            }
+        }
+
+        async function fetchPlugins() {
+            const listEl = document.getElementById('plugin-list');
+            listEl.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #999;">正在获取插件列表...</div>';
+            try {
+                const res = await authorizedFetch('/web_console/api/plugins');
+                const plugins = await res.json();
+                
+                // 按来源分组
+                const groups = {
+                    'official': { name: '官方插件', icon: '橙色', plugins: [] },
+                    'builtin': { name: '内置插件', icon: '绿色', plugins: [] },
+                    'store': { name: '商店插件', icon: '蓝色', plugins: [] },
+                    'local': { name: '本地插件', icon: '灰色', plugins: [] }
+                };
+
+                plugins.forEach(p => {
+                    const type = p.type || 'local';
+                    if (groups[type]) {
+                        groups[type].plugins.push(p);
+                    } else {
+                        groups['local'].plugins.push(p);
+                    }
+                });
+
+                const typeLabels = {
+                    'official': { text: '官方', class: 'tag-official' },
+                    'builtin': { text: '内置', class: 'tag-builtin' },
+                    'store': { text: '商店', class: 'tag-store' },
+                    'local': { text: '本地', class: 'tag-local' }
+                };
+
+                let html = '';
+                const categoryOrder = ['official', 'builtin', 'store', 'local'];
+
+                categoryOrder.forEach(type => {
+                    const group = groups[type];
+                    if (group.plugins.length > 0) {
+                        html += `
+                            <div class="plugin-category-group" style="grid-column: 1/-1;">
+                                <div class="plugin-category-title">
+                                    ${group.name}
+                                    <span class="plugin-category-count">${group.plugins.length}</span>
+                                </div>
+                                <div class="plugin-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px;">
+                                    ${group.plugins.map(p => {
+                                        const label = typeLabels[p.type] || typeLabels.local;
+                                        return `
+                                              <div class="plugin-card">
+                                                  <div class="plugin-header">
+                                                      <div class="plugin-name">${p.name || p.id}</div>
+                                                      ${p.version ? `<div class="plugin-version">${p.version}</div>` : ''}
+                                                  </div>
+                                                  <div class="plugin-desc">${p.description || '暂无描述'}</div>
+                                                  <div class="plugin-footer">
+                                                      <span class="plugin-tag ${label.class}">${label.text}</span>
+                                                      <div class="plugin-actions">
+                                                          ${p.homepage ? `<a href="${p.homepage}" target="_blank" class="btn-icon" title="主页">🏠</a>` : ''}
+                                                          <button onclick="handlePluginUninstall('${p.module}', '${p.name}')" class="btn-icon" title="卸载" style="color: #dc3545; border-color: rgba(220, 53, 69, 0.2);">🗑️</button>
+                                                          <button onclick="openConfig('${p.id}')" class="btn-config">配置</button>
+                                                      </div>
+                                                  </div>
+                                              </div>
+                                          `;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        `;
+                    }
+                });
+
+                listEl.innerHTML = html || '<div style="grid-column: 1/-1; text-align: center; color: #999; padding: 20px;">未发现已加载的插件</div>';
+                
+                // 如果搜索框有内容，自动应用过滤
+                if (document.getElementById('local-plugin-search').value) {
+                    filterLocalPlugins();
+                }
+            } catch (e) {
+                listEl.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #dc3545; padding: 20px;">获取插件列表失败</div>';
+            }
+        }
+
+        function filterLocalPlugins() {
+            const kw = document.getElementById('local-plugin-search').value.toLowerCase();
+            const cards = document.querySelectorAll('#plugin-list .plugin-card');
+            cards.forEach(card => {
+                const title = card.querySelector('.plugin-name')?.innerText.toLowerCase() || "";
+                const desc = card.querySelector('.plugin-desc')?.innerText.toLowerCase() || "";
+                
+                const visible = title.includes(kw) || desc.includes(kw);
+                card.style.display = visible ? 'flex' : 'none';
+            });
+            
+            // 处理分组标题的显示
+            const groups = document.querySelectorAll('#plugin-list .plugin-category-group');
+            groups.forEach(group => {
+                const hasVisibleCards = Array.from(group.querySelectorAll('.plugin-card')).some(c => c.style.display !== 'none');
+                group.style.display = hasVisibleCards ? 'block' : 'none';
+            });
+        }
+
+        async function handlePluginUninstall(module, name) {
+            if (!confirm(`确定要卸载插件 "${name}" (${module}) 吗？\n卸载后可能需要重启机器人才能完全卸载。`)) return;
+            
+            // 尝试通过模块名卸载，这是 nb-cli 的标准做法
+            const pluginName = module.startsWith('nonebot_plugin_') ? module : module;
+            
+            try {
+                // 显示处理中状态
+                const actionStatus = document.getElementById('action-status');
+                if (actionStatus) actionStatus.textContent = `正在卸载 ${name}...`;
+                
+                const res = await authorizedFetch('/web_console/api/store/action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'uninstall', plugin: pluginName })
+                });
+                
+                const data = await res.json();
+                if (data.error) {
+                    alert('卸载失败: ' + data.error);
+                } else {
+                    alert(data.msg || '卸载成功，建议重启机器人以应用更改。');
+                    fetchPlugins(); // 刷新列表
+                }
+            } catch (e) {
+                alert('请求失败');
+            } finally {
+                const actionStatus = document.getElementById('action-status');
+                if (actionStatus) actionStatus.textContent = '';
+            }
+        }
+
+        async function openConfig(pluginId) {
+            currentEditingPlugin = pluginId;
+            const modal = document.getElementById('config-modal');
+            const body = document.getElementById('modal-body');
+            document.getElementById('modal-title').textContent = `配置插件: ${pluginId}`;
+            body.innerHTML = '<div style="text-align: center; color: #999;">正在加载配置项...</div>';
+            modal.style.display = 'flex';
+
+            try {
+                const res = await authorizedFetch(`/web_console/api/plugins/${pluginId}/config`);
+                const data = await res.json();
+                renderConfigForm(data.config, data.schema);
+            } catch (e) {
+                body.innerHTML = '<div style="text-align: center; color: red;">加载配置项失败</div>';
+            }
+        }
+
+        function renderConfigForm(config, schema) {
+            const body = document.getElementById('modal-body');
+            body.innerHTML = '';
+            
+            if (!schema || Object.keys(schema).length === 0) {
+                body.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">该插件未导出配置项元数据</div>';
+                return;
+            }
+
+            for (const key in schema) {
+                const item = schema[key];
+                const div = document.createElement('div');
+                div.className = 'config-item';
+                
+                let inputHtml = '';
+                const val = config[key] !== undefined ? config[key] : (item.default || '');
+                
+                if (item.type === 'boolean') {
+                    inputHtml = `<select id="conf-${key}">
+                        <option value="true" ${val === true ? 'selected' : ''}>True</option>
+                        <option value="false" ${val === false ? 'selected' : ''}>False</option>
+                    </select>`;
+                } else if (item.type === 'integer' || item.type === 'number') {
+                    inputHtml = `<input type="number" id="conf-${key}" value="${val}">`;
+                } else {
+                    inputHtml = `<input type="text" id="conf-${key}" value="${val}">`;
+                }
+
+                div.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label style="margin-bottom: 0;">${item.title || key}</label>
+                        <code style="font-size: 0.8em; color: #999; background: #f0f0f0; padding: 2px 4px; border-radius: 3px;">${key}</code>
+                    </div>
+                    <div style="margin-top: 8px;">${inputHtml}</div>
+                    ${item.description ? `<div style="font-size: 0.85em; color: #666; margin-top: 6px; padding: 8px; background: #f9f9f9; border-left: 3px solid #ddd; font-style: italic;">💡 注释: ${item.description}</div>` : ''}
+                `;
+                body.appendChild(div);
+            }
+        }
+
+        function closeConfig() {
+            document.getElementById('config-modal').style.display = 'none';
+            currentEditingPlugin = null;
+        }
+
+        document.getElementById('save-config-btn').onclick = async () => {
+            const body = document.getElementById('modal-body');
+            const inputs = body.querySelectorAll('input, select, textarea');
+            const newConfig = {};
+            inputs.forEach(input => {
+                const key = input.id.replace('conf-', '');
+                let val = input.value;
+                if (input.tagName === 'SELECT') {
+                    val = val === 'true';
+                } else if (input.type === 'number') {
+                    val = Number(val);
+                }
+                newConfig[key] = val;
+            });
+
+            try {
+                const res = await authorizedFetch(`/web_console/api/plugins/${currentEditingPlugin}/config`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newConfig)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert('配置已保存（部分配置可能需要重启生效）');
+                    closeConfig();
+                } else {
+                    alert('保存失败: ' + (data.error || '未知错误'));
+                }
+            } catch (e) {
+                alert('请求失败');
+            }
+        };
+
+        function toggleSidebar(show) {
+            if (show) {
+                sidebar.classList.remove('hidden');
+            } else {
+                sidebar.classList.add('hidden');
+            }
+        }
+
+        let currentLoginTab = 'code';
+
+        function switchLoginTab(tab) {
+            currentLoginTab = tab;
+            document.querySelectorAll('.login-tab').forEach(el => {
+                el.classList.toggle('active', el.textContent.includes(tab === 'code' ? '验证码' : '密码'));
+            });
+            document.getElementById('login-code-section').style.display = tab === 'code' ? 'flex' : 'none';
+            document.getElementById('login-password-section').style.display = tab === 'password' ? 'flex' : 'none';
+            loginMsg.textContent = '';
+        }
+
+        // 封装 fetch 以自动带上 Token
+        async function authorizedFetch(url, options = {}) {
+            options.headers = options.headers || {};
+            if (authToken) {
+                options.headers['Authorization'] = authToken;
+            }
+            const res = await fetch(url, options);
+            if (res.status === 401) {
+                showLogin();
+                throw new Error('Unauthorized');
+            }
+            return res;
+        }
+
+        function showLogin() {
+            authToken = null;
+            localStorage.removeItem('web_console_token');
+            appEl.classList.remove('authenticated');
+            loginMask.classList.remove('hidden');
+        }
+
+        function hideLogin() {
+            appEl.classList.add('authenticated');
+            loginMask.classList.add('hidden');
+        }
+
+        // 发送验证码
+        sendCodeBtn.onclick = async () => {
+            sendCodeBtn.disabled = true;
+            loginMsg.style.color = '#0078d4';
+            loginMsg.textContent = '正在发送...';
+            
+            try {
+                const res = await fetch('/web_console/api/send_code', { method: 'POST' });
+                const data = await res.json();
+                if (data.error) {
+                    loginMsg.style.color = '#dc3545';
+                    loginMsg.textContent = data.error;
+                    sendCodeBtn.disabled = false;
+                } else {
+                    loginMsg.style.color = '#28a745';
+                    loginMsg.textContent = data.msg;
+                    let count = 60;
+                    const timer = setInterval(() => {
+                        sendCodeBtn.textContent = `${count}s`;
+                        if (count <= 0) {
+                            clearInterval(timer);
+                            sendCodeBtn.disabled = false;
+                            sendCodeBtn.textContent = '获取验证码';
+                        }
+                        count--;
+                    }, 1000);
+                }
+            } catch (e) {
+                loginMsg.style.color = '#dc3545';
+                loginMsg.textContent = '发送失败，请检查网络';
+                sendCodeBtn.disabled = false;
+            }
+        };
+
+        // 登录
+        loginBtn.onclick = async () => {
+            const code = document.getElementById('code-input').value.trim();
+            const password = document.getElementById('password-input').value.trim();
+            
+            const payload = {};
+            if (currentLoginTab === 'code') {
+                if (code.length !== 6) {
+                    loginMsg.style.color = '#dc3545';
+                    loginMsg.textContent = '请输入 6 位验证码';
+                    return;
+                }
+                payload.code = code;
+            } else {
+                if (!password) {
+                    loginMsg.style.color = '#dc3545';
+                    loginMsg.textContent = '请输入密码';
+                    return;
+                }
+                payload.password = password;
+            }
+
+            try {
+                const res = await fetch('/web_console/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.token) {
+                    authToken = data.token;
+                    localStorage.setItem('web_console_token', authToken);
+                    hideLogin();
+                    initApp();
+                } else {
+                    loginMsg.style.color = '#dc3545';
+                    loginMsg.textContent = data.error || '登录失败';
+                }
+            } catch (e) {
+                loginMsg.style.color = '#dc3545';
+                loginMsg.textContent = '请求失败';
+            }
+        };
+
+        async function initApp() {
+            initWS();
+            await fetchChats();
+            // 非移动端默认显示侧边栏
+            if (window.innerWidth > 768) {
+                toggleSidebar(true);
+            }
+            
+            showPage('home');
+            // 定时刷新状态
+            setInterval(() => {
+                if (document.getElementById('page-home').classList.contains('active')) fetchStatus();
+                if (document.getElementById('page-logs').classList.contains('active')) fetchLogs();
+            }, 5000);
+        }
+
+        // 初始化
+        window.onload = () => {
+            initTheme();
+            if (authToken) {
+                hideLogin();
+                initApp();
+            } else {
+                showLogin();
+            }
+        };
+
+        const chatListEl = document.getElementById('chat-list');
+        const messagesEl = document.getElementById('messages');
+        const msgInput = document.getElementById('msg-input');
+        const sendBtn = document.getElementById('send-btn');
+        const headerName = document.getElementById('current-chat-name');
+        const statusEl = document.getElementById('status');
+
+        // 初始化 WebSocket
+        function initWS() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/web_console/ws`);
+            
+            ws.onopen = () => {
+                statusEl.textContent = '● 已连接';
+                statusEl.style.color = '#28a745';
+            };
+            
+            ws.onclose = () => {
+                statusEl.textContent = '○ 已断开';
+                statusEl.style.color = '#dc3545';
+                setTimeout(initWS, 3000); // 尝试重连
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'new_message') {
+                    const chatItem = document.querySelector(`.chat-item[data-id="${data.chat_id}"]`);
+                    if (chatItem) {
+                        // 将活跃会话置顶
+                        chatListEl.prepend(chatItem);
+                        if (data.chat_id === currentChatId) {
+                            appendMessage(data.data);
+                        } else {
+                            chatItem.classList.add('has-new');
+                        }
+                    } else {
+                        // 发现新会话，刷新列表
+                        fetchChats();
+                    }
+                }
+            };
+        }
+
+        // 获取聊天列表
+        async function fetchChats() {
+            try {
+                const res = await authorizedFetch('/web_console/api/chats');
+                const data = await res.json();
+                if (data.error) {
+                    chatListEl.innerHTML = `<div style="padding: 20px; color: red;">错误: ${data.error}</div>`;
+                    return;
+                }
+                
+                renderChatList(data);
+            } catch (e) {}
+        }
+
+        function renderChatList(data) {
+            chatListEl.innerHTML = '';
+            const allChats = [...data.groups, ...data.private];
+            
+            allChats.forEach(chat => {
+                const div = document.createElement('div');
+                div.className = 'chat-item';
+                div.dataset.id = chat.id;
+                const isGroup = chat.id.startsWith('group_');
+                
+                div.innerHTML = `
+                    <img class="avatar" src="${chat.avatar}" onerror="this.src='https://via.placeholder.com/40'">
+                    <div class="chat-info">
+                        <div class="chat-name">${chat.name} <span class="tag ${isGroup ? 'tag-group' : 'tag-private'}">${isGroup ? '群' : '私'}</span></div>
+                        <div class="unread-dot"></div>
+                    </div>
+                `;
+                
+                div.onclick = () => selectChat(chat, div);
+                chatListEl.appendChild(div);
+            });
+        }
+
+        // 选择聊天
+        async function selectChat(chat, element) {
+            currentChatId = chat.id;
+            headerName.textContent = chat.name;
+            
+            // 移动端：选择聊天后隐藏侧边栏
+            if (window.innerWidth <= 768) {
+                toggleSidebar(false);
+            }
+
+            // 移除红点
+            if (element) {
+                element.classList.remove('has-new');
+            }
+            
+            // 更新 UI 激活状态
+            document.querySelectorAll('.chat-item').forEach(el => {
+                el.classList.toggle('active', el.dataset.id === chat.id);
+            });
+            
+            // 启用输入
+            msgInput.disabled = false;
+            sendBtn.disabled = false;
+            msgInput.focus();
+            
+            // 获取历史记录
+            messagesEl.innerHTML = '<div style="margin: auto; color: #999;">加载中...</div>';
+            try {
+                const res = await authorizedFetch(`/web_console/api/history/${chat.id}`);
+                const history = await res.json();
+                
+                messagesEl.innerHTML = '';
+                history.forEach(appendMessage);
+                scrollToBottom();
+            } catch (e) {}
+        }
+
+        function appendMessage(msg) {
+            // 消息去重：如果该 ID 的消息已存在，则不再添加
+            if (msg.id && document.getElementById(`msg-${msg.id}`)) {
+                return;
+            }
+
+            const wrapper = document.createElement('div');
+            if (msg.id) wrapper.id = `msg-${msg.id}`; // 设置消息 ID 方便去重
+            wrapper.className = `message-wrapper ${msg.is_self ? 'sent' : ''}`;
+            
+            const avatarImg = `<img class="msg-avatar" src="${msg.sender_avatar}" onerror="this.src='https://via.placeholder.com/36'">`;
+            
+            let contentHtml = '';
+            if (msg.elements && msg.elements.length > 0) {
+                msg.elements.forEach(el => {
+                    if (el.type === 'text') {
+                        contentHtml += `<span>${escapeHtml(el.data)}</span>`;
+                    } else if (el.type === 'image') {
+                        // 图片也走授权代理，动态注入 token
+                        let proxyUrl = el.data;
+                        if (proxyUrl.startsWith('/web_console/proxy/image')) {
+                            const separator = proxyUrl.includes('?') ? '&' : '?';
+                            proxyUrl += `${separator}token=${authToken}`;
+                        }
+                        contentHtml += `<img src="${proxyUrl}" onclick="window.open('${proxyUrl}')" onerror="this.src='https://via.placeholder.com/150?text=图片加载失败'" title="点击查看大图">`;
+                    } else if (el.type === 'face') {
+                        contentHtml += `<img class="face" src="${el.data}" onerror="this.src='https://via.placeholder.com/24?text=表情'" title="表情 ID: ${el.id}">`;
+                    } else if (el.type === 'at') {
+                        contentHtml += `<span class="at">@${el.data}</span>`;
+                    } else if (el.type === 'reply') {
+                        contentHtml += `<div class="reply-tag">回复消息 ID: ${el.data}</div>`;
+                    }
+                });
+            } else {
+                contentHtml = `<span>${escapeHtml(msg.content)}</span>`;
+            }
+
+            wrapper.innerHTML = `
+                ${avatarImg}
+                <div class="message ${msg.is_self ? 'sent' : 'received'}">
+                    <div class="msg-meta">${msg.sender_name}</div>
+                    <div class="msg-content">${contentHtml}</div>
+                </div>
+            `;
+            
+            messagesEl.appendChild(wrapper);
+            scrollToBottom();
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function scrollToBottom() {
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+
+        // 发送消息
+        async function sendMessage() {
+            const content = msgInput.value.trim();
+            if (!content || !currentChatId) return;
+            
+            msgInput.value = '';
+            try {
+                const res = await authorizedFetch('/web_console/api/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chat_id: currentChatId, content })
+                });
+                
+                const result = await res.json();
+                if (result.error) {
+                    alert('发送失败: ' + result.error);
+                }
+            } catch (e) {}
+        }
+
+        sendBtn.onclick = sendMessage;
+        msgInput.onkeypress = (e) => { if (e.key === 'Enter') sendMessage(); };
+
+        // 初始化
+        fetchChats();
+        initWS();
+    </script>
+</body>
+</html>

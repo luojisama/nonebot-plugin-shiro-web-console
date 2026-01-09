@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+dist/
+build/
+*.egg-info/
+.env
+.venv
+env/
+venv/
+data/
+*.log
+.vscode/
+.idea/
+.pdm-python
