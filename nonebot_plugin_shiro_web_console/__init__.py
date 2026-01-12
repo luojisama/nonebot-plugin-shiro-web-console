@@ -13,7 +13,10 @@ from collections import deque
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Response, Depends, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
-from nonebot import get_app, get_bot, get_driver, logger, on_message, on_command
+from nonebot import get_app, get_bot, get_driver, logger, on_message, on_command, require
+require("nonebot_plugin_localstore")
+import nonebot_plugin_localstore
+from .config import Config, config
 from nonebot.permission import SUPERUSER
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent, PrivateMessageEvent, MessageSegment
 from nonebot.plugin import PluginMetadata
@@ -22,12 +25,13 @@ __plugin_meta__ = PluginMetadata(
     name="Shiro Web Console",
     description="通过浏览器查看日志、管理机器人并发送消息",
     usage="访问 /web_console 查看，在机器人聊天框发送“web控制台”获取登录码",
-    type="tool",
+    type="application",
     homepage="https://github.com/luojisama/nonebot-plugin-shiro-web-console",
+    config=Config,
     supported_adapters={"~onebot.v11"},
     extra={
         "author": "luojisama",
-        "version": "0.1.4",
+        "version": "0.1.5",
         "pypi_test": "nonebot-plugin-shiro-web-console",
     },
 )
@@ -55,8 +59,7 @@ class AuthManager:
         self.token_expire: Optional[datetime] = None
         
         # 密码持久化文件路径
-        self.data_dir = Path(__file__).parent / "data"
-        self.data_dir.mkdir(exist_ok=True)
+        self.data_dir = nonebot_plugin_localstore.get_plugin_data_dir()
         self.password_file = self.data_dir / "password.json"
         
         # 初始加载密码
@@ -69,7 +72,7 @@ class AuthManager:
                 return data.get("password", "admin123")
             except:
                 pass
-        return getattr(get_driver().config, "web_console_password", "admin123")
+        return config.web_console_password
 
     def save_password(self, new_password: str):
         self.admin_password = new_password
@@ -122,7 +125,12 @@ async def check_auth(request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized")
     return True
 
-app:FastAPI = get_app()
+try:
+    app: FastAPI = get_app()
+except ValueError:
+    app = FastAPI()
+    logger.warning("FastAPI app not found, created a new one. This might happen during plugin test.")
+
 static_path = Path(__file__).parent / "static"
 index_html = static_path / "index.html"
 
