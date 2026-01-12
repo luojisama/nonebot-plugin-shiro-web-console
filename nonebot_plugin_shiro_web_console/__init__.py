@@ -31,7 +31,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "author": "luojisama",
-        "version": "0.1.5",
+        "version": "0.1.6",
         "pypi_test": "nonebot-plugin-shiro-web-console",
     },
 )
@@ -126,8 +126,11 @@ async def check_auth(request: Request):
     return True
 
 try:
-    app: FastAPI = get_app()
-except ValueError:
+    app: Optional[FastAPI] = get_app()
+except (ValueError, AssertionError):
+    app = None
+
+if app is None:
     app = FastAPI()
     logger.warning("FastAPI app not found, created a new one. This might happen during plugin test.")
 
