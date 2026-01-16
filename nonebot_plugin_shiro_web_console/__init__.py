@@ -37,15 +37,38 @@ __plugin_meta__ = PluginMetadata(
     },
 )
 
+# WebSocket 连接池
+active_connections: Set[WebSocket] = set()
+
+async def broadcast_message(data: dict):
+    if not active_connections:
+        return
+    
+    dead_connections = set()
+    for ws in active_connections:
+        try:
+            await ws.send_json(data)
+        except Exception:
+            dead_connections.add(ws)
+    
+    for ws in dead_connections:
+        active_connections.remove(ws)
+
 # 日志缓冲区，保留最近 200 条日志
 log_buffer = deque(maxlen=200)
 
-def log_sink(message):
-    log_buffer.append({
+async def log_sink(message):
+    log_entry = {
         "time": datetime.now().strftime("%H:%M:%S"),
         "level": message.record["level"].name,
         "message": message.record["message"],
         "module": message.record["module"]
+    }
+    log_buffer.append(log_entry)
+    # 推送日志
+    await broadcast_message({
+        "type": "new_log",
+        "data": log_entry
     })
 
 # 注册 loguru sink
@@ -165,7 +188,8 @@ image_cache: Dict[str, dict] = {}
 CACHE_SIZE = 100
 
 # WebSocket 连接池
-active_connections: Set[WebSocket] = set()
+# active_connections defined at top
+
 
 # 基础人设
 def get_chat_id(event: MessageEvent) -> str:
@@ -371,19 +395,6 @@ async def handle_all_messages(bot: Bot, event: MessageEvent):
         "data": msg_data
     })
 
-async def broadcast_message(data: dict):
-    if not active_connections:
-        return
-    
-    dead_connections = set()
-    for ws in active_connections:
-        try:
-            await ws.send_json(data)
-        except Exception:
-            dead_connections.add(ws)
-            
-    for ws in dead_connections:
-        active_connections.remove(ws)
 
 if app:
     # 认证 API
@@ -658,7 +669,7 @@ if app:
         elif action == "update":
             cmd = [nb_path, "plugin", "update", plugin_name]
         elif action == "uninstall":
-            cmd = [nb_path, "plugin", "uninstall", "-y", plugin_name]
+            cmd = [nb_path, "plugin", "uninstall", plugin_name]
         else:
             return {"error": "无效操作"}
             

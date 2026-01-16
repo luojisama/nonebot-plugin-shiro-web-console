@@ -317,17 +317,18 @@
             
             #nav-bar {
                 width: 100%;
-                height: var(--nav-height);
+                height: auto;
+                min-height: 60px;
                 flex-direction: row;
                 order: 2; /* 放到下面 */
                 padding: 0;
-                padding-bottom: env(safe-area-inset-bottom);
+                padding-bottom: max(10px, env(safe-area-inset-bottom));
                 justify-content: space-around;
                 border-top: 1px solid var(--border-color);
                 background: var(--bg-view);
             }
             
-            .nav-item { flex: 1; height: 100%; border-radius: 0; font-size: 24px; }
+            .nav-item { flex: 1; height: auto; padding: 10px 0; border-radius: 0; font-size: 28px; }
             
             #content-wrapper { order: 1; height: calc(100vh - var(--nav-height)); }
 
@@ -744,23 +745,58 @@
             try {
                 const res = await authorizedFetch('/web_console/api/logs');
                 const logs = await res.json();
-                viewer.innerHTML = logs.map(log => {
-                    let color = '#d4d4d4';
-                    if (log.level === 'ERROR') color = '#f44747';
-                    else if (log.level === 'WARNING') color = '#cca700';
-                    else if (log.level === 'SUCCESS') color = '#6a9955';
-                    else if (log.level === 'DEBUG') color = '#b5cea8';
-                    
-                    return `<div style="margin-bottom: 4px;">
-                        <span style="color: #888;">[${log.time}]</span>
-                        <span style="color: ${color}; font-weight: bold; margin: 0 5px;">${log.level.padEnd(7)}</span>
-                        <span style="color: #569cd6;">${log.module}</span>
-                        <span style="color: #ce9178;"> - ${log.message}</span>
-                    </div>`;
-                }).join('');
+                // 如果是手动刷新，或者初次加载，清空当前视图
+                if (!viewer.querySelector('.log-entry') || viewer.innerText.includes('正在加载') || viewer.innerText.includes('失败')) {
+                     viewer.innerHTML = '';
+                }
+                
+                // 这里简单处理：全量刷新时清空重绘，或者我们可以优化为合并。
+                // 为了简单起见，fetchLogs 我们还是全量替换吧，但是使用 appendLog 的逻辑来生成 HTML
+                viewer.innerHTML = '';
+                logs.forEach(log => appendLog(log, false)); // false 表示不自动滚动，最后统一滚动
                 viewer.scrollTop = viewer.scrollHeight;
             } catch (e) {
                 viewer.innerHTML = '<div style="color: #f44747;">获取日志失败</div>';
+            }
+        }
+
+        function appendLog(log, autoScroll = true) {
+            const viewer = document.getElementById('log-viewer');
+            
+            // 清理非日志内容的提示信息
+            if (viewer.firstElementChild && !viewer.firstElementChild.classList.contains('log-entry')) {
+                 viewer.innerHTML = '';
+            }
+
+            let color = '#d4d4d4';
+            if (log.level === 'ERROR') color = '#f44747';
+            else if (log.level === 'WARNING') color = '#cca700';
+            else if (log.level === 'SUCCESS') color = '#6a9955';
+            else if (log.level === 'DEBUG') color = '#b5cea8';
+            else if (log.level === 'INFO') color = '#d4d4d4';
+
+            const div = document.createElement('div');
+            div.className = 'log-entry';
+            div.style.marginBottom = '4px';
+            div.innerHTML = `
+                <span style="color: #888;">[${log.time}]</span>
+                <span style="color: ${color}; font-weight: bold; margin: 0 5px;">${log.level.padEnd(7)}</span>
+                <span style="color: #569cd6;">${log.module}</span>
+                <span style="color: #ce9178;"> - ${log.message}</span>
+            `;
+            
+            // 检查是否滚动到底部
+            const isScrolledToBottom = viewer.scrollHeight - viewer.clientHeight <= viewer.scrollTop + 50;
+            
+            viewer.appendChild(div);
+            
+            // 限制日志条数，防止页面卡顿
+            if (viewer.children.length > 1000) {
+                viewer.removeChild(viewer.firstElementChild);
+            }
+
+            if (autoScroll && isScrolledToBottom) {
+                viewer.scrollTop = viewer.scrollHeight;
             }
         }
 
@@ -1337,6 +1373,8 @@
                         // 发现新会话，刷新列表
                         fetchChats();
                     }
+                } else if (data.type === 'new_log') {
+                    appendLog(data.data);
                 }
             };
         }
