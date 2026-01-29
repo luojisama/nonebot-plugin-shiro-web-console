@@ -16,7 +16,7 @@ from collections import deque
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Response, Depends, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
-from nonebot import get_app, get_bot, get_bots, get_driver, logger, on_message, on_command, require, on_bot_connect
+from nonebot import get_app, get_bot, get_bots, get_driver, logger, on_message, on_command, require
 import nonebot_plugin_localstore
 from .config import Config, config
 from nonebot.permission import SUPERUSER
@@ -35,7 +35,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "author": "luojisama",
-        "version": "0.1.8",
+        "version": "0.1.9",
         "pypi_test": "nonebot-plugin-shiro-web-console",
     },
 )
@@ -447,7 +447,7 @@ async def on_api_called(bot: Bot, exception: Optional[Exception], api: str, data
         except Exception as e:
             logger.error(f"处理 Bot 发送消息 Hook 失败: {e}")
 
-@on_bot_connect
+@driver.on_bot_connect
 async def _(bot: Bot):
     if hasattr(bot, "on_called_api"):
         bot.on_called_api(on_api_called)
