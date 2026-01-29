@@ -5,6 +5,8 @@ import os
 import random
 import time
 import secrets
+import hashlib
+import re
 from datetime import datetime, timedelta
 from urllib.parse import quote, unquote
 from typing import Dict, List, Set, Optional, Any
@@ -14,13 +16,14 @@ from collections import deque
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Response, Depends, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
-from nonebot import get_app, get_bot, get_driver, logger, on_message, on_command, require
-require("nonebot_plugin_localstore")
+from nonebot import get_app, get_bot, get_bots, get_driver, logger, on_message, on_command, require
 import nonebot_plugin_localstore
 from .config import Config, config
 from nonebot.permission import SUPERUSER
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent, PrivateMessageEvent, MessageSegment
 from nonebot.plugin import PluginMetadata
+
+START_TIME = time.time()
 
 __plugin_meta__ = PluginMetadata(
     name="Shiro Web Console",
@@ -87,20 +90,30 @@ class AuthManager:
         self.password_file = self.data_dir / "password.json"
         
         # 初始加载密码
-        self.admin_password = self._load_password()
+        self.admin_password_hash = self._load_password_hash()
 
-    def _load_password(self) -> str:
+    def _load_password_hash(self) -> str:
+        pwd = "admin123"
         if self.password_file.exists():
             try:
                 data = json.loads(self.password_file.read_text(encoding="utf-8"))
-                return data.get("password", "admin123")
+                if "password_hash" in data:
+                    return data["password_hash"]
+                pwd = data.get("password", "admin123")
             except:
                 pass
-        return config.web_console_password
+        else:
+            pwd = config.web_console_password
+        
+        # 迁移或初始化：将明文转换为哈希
+        return hashlib.sha256(pwd.encode()).hexdigest()
 
     def save_password(self, new_password: str):
-        self.admin_password = new_password
-        self.password_file.write_text(json.dumps({"password": new_password}), encoding="utf-8")
+        pwd_hash = hashlib.sha256(new_password.encode()).hexdigest()
+        self.admin_password_hash = pwd_hash
+        self.password_file.write_text(json.dumps({"password_hash": pwd_hash}), encoding="utf-8")
+        # 修改密码后使旧 token 失效
+        self.token = None
 
     def generate_code(self) -> str:
         self.code = "".join([str(random.randint(0, 9)) for _ in range(6)])
@@ -120,7 +133,8 @@ class AuthManager:
         return False
 
     def verify_password(self, password: str) -> bool:
-        if password == self.admin_password:
+        input_hash = hashlib.sha256(password.encode()).hexdigest()
+        if input_hash == self.admin_password_hash:
             self.generate_token()
             return True
         return False
@@ -208,7 +222,7 @@ async def handle_password_cmd(bot: Bot, event: MessageEvent):
         await password_cmd.finish("请在命令后输入新密码，例如：web密码 mynewpassword")
     
     auth_manager.save_password(new_password)
-    await password_cmd.finish(f"Web控制台密码已修改为: {new_password}\n请妥善保存。")
+    await password_cmd.finish(f"Web控制台密码已修改。\n请妥善保存。")
 
 @login_cmd.handle()
 async def handle_login_cmd(bot: Bot, event: MessageEvent):
@@ -404,7 +418,13 @@ if app:
             return {"error": "未设置 SUPERUSERS 管理员列表"}
         
         code = auth_manager.generate_code()
-        bot = get_bot()
+        
+        # 兼容多 Bot 场景
+        from nonebot import get_bots
+        bots = get_bots()
+        if not bots:
+            return {"error": "未连接任何 Bot"}
+        bot = list(bots.values())[0]
         
         success_count = 0
         for user_id in superusers:
@@ -445,14 +465,13 @@ if app:
         # 系统性能
         cpu_percent = psutil.cpu_percent()
         memory = psutil.virtual_memory()
-        disk = psutil.disk_usage('/')
+        disk = psutil.disk_usage('.')
         
         # 网络流量
         net_io = psutil.net_io_counters()
         
         # 运行时间
-        boot_time = psutil.boot_time()
-        uptime = time.time() - boot_time
+        uptime = time.time() - START_TIME
         uptime_str = str(datetime.timedelta(seconds=int(uptime)))
         
         # 机器人信息
@@ -530,9 +549,13 @@ if app:
     async def system_action(request: Request):
         data = await request.json()
         action = data.get("action")
+        confirm = data.get("confirm")
         
         if action not in ["reboot", "shutdown"]:
             return {"error": "无效操作"}
+            
+        if not confirm:
+            return {"error": "请确认操作", "need_confirm": True}
             
         import os
         import sys
@@ -642,6 +665,9 @@ if app:
         if not action or not plugin_name:
             return {"error": "参数错误"}
             
+        if not re.match(r'^[a-zA-Z0-9_-]+$', plugin_name):
+            return {"error": "非法插件名称"}
+
         # 执行命令
         import asyncio
         import sys
@@ -713,16 +739,75 @@ if app:
 
     @app.post("/web_console/api/plugins/{plugin_id}/config", dependencies=[Depends(check_auth)])
     async def update_plugin_config(plugin_id: str, new_config: dict):
-        # 这里仅做模拟保存逻辑，实际应用中通常需要修改 .env 文件或数据库
-        # 由于直接修改运行中的 config 风险较大，此处返回成功，并提示需要重启
+        # 尝试更新 .env 文件
+        env_path = Path.cwd() / ".env"
+        # 简单查找逻辑
+        if not env_path.exists():
+            for name in [".env.prod", ".env.dev"]:
+                p = Path.cwd() / name
+                if p.exists():
+                    env_path = p
+                    break
+        
+        try:
+            if env_path.exists():
+                content = env_path.read_text(encoding="utf-8")
+                lines = content.splitlines()
+                new_lines = []
+                keys_updated = set()
+                
+                for line in lines:
+                    line_strip = line.strip()
+                    if not line_strip or line_strip.startswith("#"):
+                        new_lines.append(line)
+                        continue
+                        
+                    if "=" in line:
+                        key = line.split("=", 1)[0].strip()
+                        if key in new_config:
+                            val = new_config[key]
+                            if isinstance(val, bool):
+                                val_str = str(val).lower()
+                            else:
+                                val_str = str(val)
+                            new_lines.append(f"{key}={val_str}")
+                            keys_updated.add(key)
+                        else:
+                            new_lines.append(line)
+                    else:
+                        new_lines.append(line)
+                
+                # 追加新配置
+                for key, val in new_config.items():
+                    if key not in keys_updated:
+                        if isinstance(val, bool):
+                            val_str = str(val).lower()
+                        else:
+                            val_str = str(val)
+                        new_lines.append(f"{key}={val_str}")
+                
+                env_path.write_text("\n".join(new_lines), encoding="utf-8")
+                logger.info(f"已更新配置文件 {env_path}")
+            else:
+                logger.warning("未找到 .env 文件，无法持久化配置")
+                
+        except Exception as e:
+            logger.error(f"保存配置失败: {e}")
+            return {"error": str(e)}
+
         logger.info(f"收到插件 {plugin_id} 的新配置: {new_config}")
-        return {"success": True}
+        return {"success": True, "msg": "配置已保存至 .env (需重启生效)"}
 
     # API 路由
     @app.get("/web_console/api/chats", dependencies=[Depends(check_auth)])
     async def get_chats():
         try:
-            bot = get_bot()
+            from nonebot import get_bots
+            bots = get_bots()
+            if not bots:
+                return {"error": "No bot connected"}
+            bot = list(bots.values())[0]
+
             if not isinstance(bot, Bot):
                 return {"error": "Only OneBot v11 is supported"}
             
@@ -784,7 +869,11 @@ if app:
                 
         # 尝试作为本地路径处理
         try:
-            path = Path(url)
+            path = Path(url).resolve()
+            # 安全检查：只允许访问当前工作目录下的文件
+            if not str(path).startswith(str(Path.cwd())):
+                 return Response(status_code=403)
+            
             if path.exists() and path.is_file():
                 return FileResponse(str(path))
         except Exception as e:
@@ -795,7 +884,12 @@ if app:
     @app.post("/web_console/api/send", dependencies=[Depends(check_auth)])
     async def send_message(data: dict):
         try:
-            bot = get_bot()
+            from nonebot import get_bots
+            bots = get_bots()
+            if not bots:
+                return {"error": "No bot connected"}
+            bot = list(bots.values())[0]
+
             chat_id = data.get("chat_id")
             content = data.get("content")
             
@@ -839,6 +933,11 @@ if app:
     # WebSocket 端点
     @app.websocket("/web_console/ws")
     async def websocket_endpoint(websocket: WebSocket):
+        token = websocket.query_params.get("token")
+        if not token or not auth_manager.verify_token(token):
+            await websocket.close(code=1008)
+            return
+            
         await websocket.accept()
         active_connections.add(websocket)
         try:
