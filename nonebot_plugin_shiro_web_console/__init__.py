@@ -16,11 +16,11 @@ from collections import deque
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Response, Depends, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
-from nonebot import get_app, get_bot, get_bots, get_driver, logger, on_message, on_command, require
+from nonebot import get_app, get_bot, get_bots, get_driver, logger, on_message, on_command, require, on_bot_connect
 import nonebot_plugin_localstore
 from .config import Config, config
 from nonebot.permission import SUPERUSER
-from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent, PrivateMessageEvent, MessageSegment
+from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent, PrivateMessageEvent, MessageSegment, Message
 from nonebot.plugin import PluginMetadata
 
 START_TIME = time.time()
@@ -35,7 +35,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "author": "luojisama",
-        "version": "0.1.7",
+        "version": "0.1.8",
         "pypi_test": "nonebot-plugin-shiro-web-console",
     },
 )
@@ -316,6 +316,142 @@ async def handle_login_cmd(bot: Bot, event: MessageEvent):
             first_url = f"http://{public_ips[0]}:{port}/web_console" if public_ips else f"http://127.0.0.1:{port}/web_console"
             await login_cmd.finish(f"私聊发送失败，请确保您已添加机器人为好友。\n(当前环境访问地址提示：{first_url})")
 
+# 辅助函数：解析消息段
+def parse_message_elements(message_segments) -> List[dict]:
+    elements = []
+    
+    # 鲁棒性处理：如果是字符串，尝试转为 Message 对象
+    if isinstance(message_segments, str):
+        try:
+            # Message(str) 会自动解析 CQ 码（如果适配器支持）或作为纯文本
+            message_segments = Message(message_segments)
+        except Exception:
+            # 降级处理
+            return [{"type": "text", "data": {"text": message_segments}}]
+
+    # 如果是 Message 对象，转为 list
+    if hasattr(message_segments, "__iter__") and not isinstance(message_segments, (list, tuple)):
+        # Message 对象迭代出来是 MessageSegment
+        segments = list(message_segments)
+    else:
+        segments = message_segments
+
+    for seg in segments:
+        # 兼容 dict 和 MessageSegment
+        if isinstance(seg, dict):
+            seg_type = seg.get("type")
+            seg_data = seg.get("data", {})
+        else:
+            seg_type = seg.type
+            seg_data = seg.data
+        
+        if seg_type == "text":
+            elements.append({"type": "text", "data": seg_data.get("text", "")})
+        elif seg_type == "image":
+            # 记录图片数据以便排查
+            logger.debug(f"解析到图片数据: {seg_data}")
+            # 优先从 get_msg 的数据中获取 url，NapCat 在 Linux 下可能返回 path 或 file 字段
+            raw_url = seg_data.get("url") or seg_data.get("file") or seg_data.get("path") or ""
+            
+            # 代理链接不带 token，由前端动态注入或 check_auth 处理
+            final_url = f"/web_console/proxy/image?url={quote(raw_url)}" if raw_url else ""
+            if raw_url.startswith("data:image"):
+                final_url = raw_url
+                
+            elements.append({"type": "image", "data": final_url, "raw": raw_url})
+        elif seg_type == "face":
+            face_id = seg_data.get("id")
+            face_url = f"https://s.p.qq.com/pub/get_face?img_type=3&face_id={face_id}"
+            elements.append({"type": "face", "data": face_url, "id": face_id})
+        elif seg_type == "mface":
+            url = seg_data.get("url")
+            elements.append({"type": "image", "data": url})
+        elif seg_type == "at":
+            elements.append({"type": "at", "data": seg_data.get("qq")})
+        elif seg_type == "reply":
+            elements.append({"type": "reply", "data": seg_data.get("id")})
+            
+    return elements
+
+# Hook: 监听 Bot API 调用，捕获发送的消息
+async def on_api_called(bot: Bot, exception: Optional[Exception], api: str, data: Dict[str, Any], result: Any):
+    if exception:
+        return
+        
+    if api in ["send_group_msg", "send_private_msg", "send_msg"]:
+        try:
+            # Parse data
+            message = data.get("message")
+            if isinstance(message, str):
+                msg_obj = Message(message)
+            elif isinstance(message, list):
+                # 假设是 list of dicts
+                msg_obj = message 
+            else:
+                msg_obj = message
+                
+            elements = parse_message_elements(msg_obj)
+            
+            # Determine chat_id
+            chat_id = ""
+            if api == "send_group_msg":
+                chat_id = f"group_{data.get('group_id')}"
+            elif api == "send_private_msg":
+                chat_id = f"private_{data.get('user_id')}"
+            elif api == "send_msg":
+                if data.get("message_type") == "group":
+                    chat_id = f"group_{data.get('group_id')}"
+                else:
+                    chat_id = f"private_{data.get('user_id')}"
+                    
+            if not chat_id:
+                return
+
+            # Construct msg_data
+            msg_id = 0
+            if isinstance(result, dict):
+                msg_id = result.get("message_id", 0)
+            elif isinstance(result, int):
+                msg_id = result
+                
+            # 获取 content 字符串表示
+            content_str = str(message) if not isinstance(message, list) else "[Message]"
+            
+            msg_data = {
+                "id": msg_id,
+                "chat_id": chat_id,
+                "time": int(time.time()),
+                "type": "group" if "group" in chat_id else "private",
+                "sender_id": bot.self_id,
+                "sender_name": "我",
+                "sender_avatar": f"https://q1.qlogo.cn/g?b=qq&nk={bot.self_id}&s=640",
+                "elements": elements,
+                "content": content_str,
+                "self_id": bot.self_id,
+                "is_self": True
+            }
+            
+            # Add to cache and broadcast
+            if chat_id not in message_cache:
+                message_cache[chat_id] = []
+            
+            message_cache[chat_id].append(msg_data)
+            if len(message_cache[chat_id]) > CACHE_SIZE:
+                message_cache[chat_id].pop(0)
+                
+            await broadcast_message({
+                "type": "new_message",
+                "chat_id": chat_id,
+                "data": msg_data
+            })
+        except Exception as e:
+            logger.error(f"处理 Bot 发送消息 Hook 失败: {e}")
+
+@on_bot_connect
+async def _(bot: Bot):
+    if hasattr(bot, "on_called_api"):
+        bot.on_called_api(on_api_called)
+
 # 监听所有消息
 msg_matcher = on_message(priority=1, block=False)
 
@@ -335,51 +471,8 @@ async def handle_all_messages(bot: Bot, event: MessageEvent):
         logger.warning(f"获取消息详情失败: {e}，将使用事件自带消息内容")
         message = event.get_message()
 
-    # 消息内容解析
-    elements = []
-    # 消息唯一 ID：使用适配器提供的原始 ID，以便前端去重
-    msg_id = str(event.message_id)
-    
-    # 如果 message 是列表（get_msg 返回格式），直接遍历；如果是 Message 对象，也可以遍历
-    for seg in message:
-        # 处理 get_msg 返回的字典格式或 MessageSegment 对象
-        seg_type = seg["type"] if isinstance(seg, dict) else seg.type
-        seg_data = seg["data"] if isinstance(seg, dict) else seg.data
-        
-        if seg_type == "text":
-            elements.append({"type": "text", "data": seg_data.get("text", "")})
-        elif seg_type == "image":
-            # 记录图片数据以便排查
-            logger.debug(f"解析到图片数据: {seg_data}")
-            # 优先从 get_msg 的数据中获取 url，NapCat 在 Linux 下可能返回 path 或 file 字段
-            raw_url = seg_data.get("url") or seg_data.get("file") or seg_data.get("path") or ""
-            
-            # 如果是本地文件路径或非 http 开头的，构造代理 URL
-            if raw_url and not raw_url.startswith("http"):
-                # 这种情况下可能是 base64 或者本地路径，或者是 CQ 码中的 file 字段
-                # 我们先尝试直接传给前端，由前端处理或后续通过代理获取
-                pass
-            
-            # 为了确保显示，所有图片都尝试通过代理中转，除非是 base64
-            if raw_url.startswith("data:image"):
-                final_url = raw_url
-            else:
-                # 代理链接不带 token，由前端动态注入或 check_auth 处理
-                final_url = f"/web_console/proxy/image?url={quote(raw_url)}" if raw_url else ""
-            
-            elements.append({"type": "image", "data": final_url, "raw": raw_url})
-        elif seg_type == "face":
-            face_id = seg_data.get("id")
-            face_url = f"https://s.p.qq.com/pub/get_face?img_type=3&face_id={face_id}"
-            elements.append({"type": "face", "data": face_url, "id": face_id})
-        elif seg_type == "mface":
-            # 商城表情（Stickers）
-            url = seg_data.get("url")
-            elements.append({"type": "image", "data": url})
-        elif seg_type == "at":
-            elements.append({"type": "at", "data": seg_data.get("qq")})
-        elif seg_type == "reply":
-            elements.append({"type": "reply", "data": seg_data.get("id")})
+    # 使用辅助函数解析消息内容
+    elements = parse_message_elements(message)
     
     msg_data = {
         "id": event.message_id,
@@ -835,6 +928,49 @@ if app:
 
     @app.get("/web_console/api/history/{chat_id}", dependencies=[Depends(check_auth)])
     async def get_history(chat_id: str):
+        # 优先返回缓存
+        if chat_id in message_cache and len(message_cache[chat_id]) > 0:
+            return message_cache[chat_id]
+            
+        # 尝试从 Bot 获取历史消息 (OneBot v11 get_group_msg_history)
+        try:
+            from nonebot import get_bots
+            bots = get_bots()
+            if bots:
+                bot = list(bots.values())[0]
+                if chat_id.startswith("group_"):
+                    group_id = int(chat_id.replace("group_", ""))
+                    # 尝试调用 NapCat/Go-CQHTTP 的 get_group_msg_history
+                    res = await bot.call_api("get_group_msg_history", group_id=group_id)
+                    messages = res.get("messages", [])
+                    
+                    parsed_msgs = []
+                    for raw in messages:
+                        # raw: {message_id, time, sender: {...}, message: [...], raw_message: ...}
+                        sender = raw.get("sender", {})
+                        sender_id = sender.get("user_id") or 0
+                        is_self = str(sender_id) == str(bot.self_id)
+                        
+                        parsed_msgs.append({
+                            "id": raw.get("message_id"),
+                            "chat_id": chat_id,
+                            "time": raw.get("time"),
+                            "type": "group",
+                            "sender_id": sender_id,
+                            "sender_name": sender.get("nickname") or sender.get("card") or str(sender_id),
+                            "sender_avatar": f"https://q1.qlogo.cn/g?b=qq&nk={sender_id}&s=640",
+                            "elements": parse_message_elements(raw.get("message", [])),
+                            "content": raw.get("raw_message", ""),
+                            "self_id": bot.self_id,
+                            "is_self": is_self
+                        })
+                    
+                    if parsed_msgs:
+                        message_cache[chat_id] = parsed_msgs[-CACHE_SIZE:]
+                        return message_cache[chat_id]
+        except Exception as e:
+            logger.warning(f"获取历史消息失败: {e}")
+            
         return message_cache.get(chat_id, [])
 
     @app.get("/web_console/proxy/image", dependencies=[Depends(check_auth)])
@@ -903,29 +1039,6 @@ if app:
                 user_id = int(chat_id.replace("private_", ""))
                 await bot.send_private_msg(user_id=user_id, message=content)
                 
-            # 发送成功后手动添加一条自己的消息到缓存并推送
-            my_msg = {
-                "id": 0,
-                "time": int(time.time()),
-                "type": "group" if chat_id.startswith("group_") else "private",
-                "sender_id": bot.self_id,
-                "sender_name": "我",
-                "sender_avatar": f"https://q1.qlogo.cn/g?b=qq&nk={bot.self_id}&s=640",
-                "elements": [{"type": "text", "data": content}],
-                "content": content,
-                "is_self": True
-            }
-            
-            if chat_id not in message_cache:
-                message_cache[chat_id] = []
-            message_cache[chat_id].append(my_msg)
-            
-            await broadcast_message({
-                "type": "new_message",
-                "chat_id": chat_id,
-                "data": my_msg
-            })
-            
             return {"status": "ok"}
         except Exception as e:
             return {"error": str(e)}

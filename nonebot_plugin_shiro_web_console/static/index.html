@@ -1344,7 +1344,9 @@
         // 初始化 WebSocket
         function initWS() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            ws = new WebSocket(`${protocol}//${window.location.host}/web_console/ws`);
+            // 添加 token 参数防止连接被服务端拒绝 (code 1008)
+            const wsUrl = `${protocol}//${window.location.host}/web_console/ws?token=${authToken}`;
+            ws = new WebSocket(wsUrl);
             
             ws.onopen = () => {
                 statusEl.textContent = '● 已连接';
