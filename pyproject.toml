@@ -1,6 +1,6 @@
 [project]
 name = "nonebot-plugin-shiro-web-console"
-version = "0.1.10"
+version = "0.1.11"
 description = "一个用于 NoneBot2 的网页控制台插件，支持通过浏览器查看日志和发送消息"
 readme = "README.md"
 requires-python = ">=3.9"

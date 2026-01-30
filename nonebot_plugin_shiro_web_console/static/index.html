@@ -709,12 +709,26 @@
             if (!confirm(`确定要${actionText}机器人吗？`)) return;
             
             try {
-                const res = await authorizedFetch('/web_console/api/system/action', {
+                // 第一次请求（可能返回需要确认）
+                let res = await authorizedFetch('/web_console/api/system/action', {
                     method: 'POST',
                     body: JSON.stringify({ action })
                 });
-                const data = await res.json();
+                let data = await res.json();
                 
+                // 如果后端返回需要确认
+                if (data.need_confirm) {
+                    const confirmed = confirm('确定要执行此操作吗？');
+                    if (!confirmed) return;
+                    
+                    // 再次发送带确认的请求
+                    res = await authorizedFetch('/web_console/api/system/action', {
+                        method: 'POST',
+                        body: JSON.stringify({ action, confirm: true })
+                    });
+                    data = await res.json();
+                }
+
                 if (data.error) {
             // 使用更友好的错误显示方式
             const errorArea = document.createElement('div');
