@@ -1307,6 +1307,8 @@
             }
         };
 
+        let appInterval = null;
+
         async function initApp() {
             initWS();
             await fetchChats();
@@ -1317,9 +1319,11 @@
             
             showPage('home');
             // 定时刷新状态
-            setInterval(() => {
+            if (appInterval) clearInterval(appInterval);
+            appInterval = setInterval(() => {
                 if (document.getElementById('page-home').classList.contains('active')) fetchStatus();
-                if (document.getElementById('page-logs').classList.contains('active')) fetchLogs();
+                // 日志已通过 WebSocket 推送，不再轮询，避免刷屏
+                // if (document.getElementById('page-logs').classList.contains('active')) fetchLogs();
             }, 5000);
         }
 
@@ -1343,6 +1347,11 @@
 
         // 初始化 WebSocket
         function initWS() {
+            if (ws) {
+                ws.onclose = null; // 防止触发重连
+                ws.close();
+            }
+
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             // 添加 token 参数防止连接被服务端拒绝 (code 1008)
             const wsUrl = `${protocol}//${window.location.host}/web_console/ws?token=${authToken}`;
