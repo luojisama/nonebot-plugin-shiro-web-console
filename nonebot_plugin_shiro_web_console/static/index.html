@@ -514,6 +514,7 @@
                         <div class="sub-nav">
                             <div class="sub-nav-item active" id="tab-local" onclick="switchPluginTab('local')">已安装</div>
                             <div class="sub-nav-item" id="tab-store" onclick="switchPluginTab('store')">插件商店</div>
+                            <div class="sub-nav-item" id="tab-updates" onclick="switchPluginTab('updates')">检查更新</div>
                         </div>
                     </div>
                     <div class="page-content" id="plugin-content" style="padding: 20px; background: var(--bg-main);">
@@ -531,6 +532,15 @@
                             <div id="store-status-bar" style="margin-top: 20px; padding: 10px 0; font-size: 0.85em; color: var(--text-secondary); border-top: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
                                 <span id="store-count">正在加载商店数据...</span>
                                 <span id="action-status" style="font-weight: bold; color: var(--primary-color);"></span>
+                            </div>
+                        </div>
+                        <!-- 更新视图 -->
+                        <div id="updates-view" style="display: none;">
+                            <div id="updates-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px;">
+                                <!-- 更新卡片 -->
+                            </div>
+                            <div id="updates-status-bar" style="margin-top: 20px; padding: 10px 0; font-size: 0.85em; color: var(--text-secondary); border-top: 1px solid var(--border-color);">
+                                <span id="updates-count">正在检查更新...</span>
                             </div>
                         </div>
                     </div>
@@ -1049,6 +1059,120 @@
             } catch (e) {
                 listEl.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #dc3545; padding: 20px;">获取插件列表失败</div>';
             }
+        }
+
+        function switchPluginTab(tab) {
+            // Update tabs
+            document.querySelectorAll('.sub-nav-item').forEach(el => el.classList.remove('active'));
+            document.getElementById(`tab-${tab}`).classList.add('active');
+            
+            // Update views
+            document.getElementById('local-plugins-view').style.display = 'none';
+            document.getElementById('store-plugins-view').style.display = 'none';
+            document.getElementById('updates-view').style.display = 'none';
+            
+            // Show search bar only for local/store
+            const searchContainer = document.getElementById('plugin-search-container');
+            const localSearch = document.getElementById('local-plugin-search');
+            const storeSearch = document.getElementById('store-search');
+            
+            searchContainer.style.visibility = tab === 'updates' ? 'hidden' : 'visible';
+            localSearch.style.display = tab === 'local' ? 'block' : 'none';
+            storeSearch.style.display = tab === 'store' ? 'block' : 'none';
+
+            if (tab === 'local') {
+                document.getElementById('local-plugins-view').style.display = 'block';
+                fetchPlugins();
+            } else if (tab === 'store') {
+                document.getElementById('store-plugins-view').style.display = 'block';
+                openStore();
+            } else if (tab === 'updates') {
+                document.getElementById('updates-view').style.display = 'block';
+                openUpdates();
+            }
+        }
+
+        async function openUpdates() {
+            const listEl = document.getElementById('updates-list');
+            const countEl = document.getElementById('updates-count');
+            
+            listEl.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #999;">正在检查更新...</div>';
+            countEl.textContent = '正在获取数据...';
+
+            try {
+                // 并行获取已安装插件和商店数据
+                const [pluginsRes, storeRes] = await Promise.all([
+                    authorizedFetch('/web_console/api/plugins'),
+                    authorizedFetch('/web_console/api/store')
+                ]);
+                
+                const installedPlugins = await pluginsRes.json();
+                const storeData = await storeRes.json();
+                
+                if (storeData.error) {
+                    listEl.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #dc3545;">${storeData.error}</div>`;
+                    return;
+                }
+
+                // 筛选有更新的插件
+                const updates = [];
+                
+                installedPlugins.forEach(local => {
+                    // 通过 module_name 匹配
+                    const storePlugin = storeData.find(s => s.module_name === local.module || s.project_link === local.id);
+                    
+                    if (storePlugin) {
+                        // 简单版本比较: 如果字符串不相等，且 store 版本通常较新
+                        // 移除 'v' 前缀进行比较
+                        const v1 = (local.version || '0.0.0').replace(/^v/, '');
+                        const v2 = (storePlugin.version || '0.0.0').replace(/^v/, '');
+                        
+                        if (v1 !== v2) {
+                            updates.push({
+                                local: local,
+                                store: storePlugin
+                            });
+                        }
+                    }
+                });
+
+                if (updates.length === 0) {
+                    listEl.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #999; padding: 40px;">所有插件已是最新版本 🎉</div>';
+                    countEl.textContent = '暂无更新';
+                } else {
+                    renderUpdates(updates);
+                    countEl.textContent = `发现 ${updates.length} 个可更新插件`;
+                }
+                
+            } catch (e) {
+                listEl.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #dc3545;">检查更新失败: ${e.message}</div>`;
+            }
+        }
+
+        function renderUpdates(updates) {
+             const listEl = document.getElementById('updates-list');
+             listEl.innerHTML = updates.map(item => {
+                 const p = item.store;
+                 const local = item.local;
+                 return `
+                    <div class="store-card" style="border-left: 4px solid var(--primary-color);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; min-width: 0;">
+                            <a href="${p.homepage || '#'}" target="_blank" class="store-name" title="${p.name}">${p.name}</a>
+                            <span class="plugin-tag tag-store" style="font-size: 0.6em;">更新</span>
+                        </div>
+                        <div class="store-desc" title="${p.desc}">${p.desc}</div>
+                        <div class="store-meta" style="margin-top: 10px; display: grid; grid-template-columns: auto 1fr; gap: 5px 15px; font-size: 0.85em;">
+                            <span style="color: #999;">当前版本:</span>
+                            <span style="font-family: monospace;">${local.version}</span>
+                            <span style="color: var(--primary-color); font-weight: bold;">最新版本:</span>
+                            <span style="font-family: monospace; color: var(--primary-color); font-weight: bold;">${p.version}</span>
+                        </div>
+                        <div class="store-footer">
+                             <button onclick="handleStoreAction('update', '${p.project_link}')" class="store-btn store-btn-update" style="width: 100%;">立即更新</button>
+                        </div>
+                    </div>
+                `;
+             }).join('');
         }
 
         function filterLocalPlugins() {
