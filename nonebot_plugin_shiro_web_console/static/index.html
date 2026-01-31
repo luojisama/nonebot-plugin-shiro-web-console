@@ -554,6 +554,7 @@
                         <div style="font-weight: bold; font-size: 1.2em;">NoneBot 日志</div>
                         <div style="display: flex; gap: 10px;">
                             <button onclick="fetchLogs()" style="padding: 5px 12px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">刷新</button>
+                            <button id="btn-download-log" onclick="downloadFullLog()" style="padding: 5px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;" title="下载完整运行日志">下载日志</button>
                             <button onclick="document.getElementById('log-viewer').innerHTML = ''" style="padding: 5px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">清屏</button>
                         </div>
                     </div>
@@ -1696,6 +1697,36 @@
 
         sendBtn.onclick = sendMessage;
         msgInput.onkeypress = (e) => { if (e.key === 'Enter') sendMessage(); };
+
+        // 下载完整日志
+        async function downloadFullLog() {
+            const btn = document.getElementById('btn-download-log');
+            const originalText = btn.textContent;
+            btn.textContent = '下载中...';
+            btn.disabled = true;
+            try {
+                const res = await authorizedFetch('/web_console/api/logs/download');
+                if (res.status === 404) {
+                    alert('暂无完整日志记录');
+                    return;
+                }
+                if (!res.ok) throw new Error('下载失败');
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `nonebot_full_${new Date().toISOString().slice(0,10)}.log`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            } catch (e) {
+                alert('下载日志失败: ' + e.message);
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
 
         // 初始化
         fetchChats();

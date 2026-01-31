@@ -767,84 +767,90 @@ if app:
 
     @app.post("/web_console/api/store/action", dependencies=[Depends(check_auth)])
     async def store_action(request: Request):
-        data = await request.json()
-        action = data.get("action")  # install, update, uninstall
-        plugin_name = data.get("plugin")
+        # 尝试获取锁，如果已被占用则立即返回错误，或等待
+        # 这里选择等待，确保操作按顺序执行
+        if store_lock.locked():
+             logger.warning("插件操作正在进行中，请求已排队...")
         
-        if not action or not plugin_name:
-            return {"error": "参数错误"}
+        async with store_lock:
+            data = await request.json()
+            action = data.get("action")  # install, update, uninstall
+            plugin_name = data.get("plugin")
             
-        if not re.match(r'^[a-zA-Z0-9_-]+$', plugin_name):
-            return {"error": "非法插件名称"}
-
-        # 执行命令
-        import asyncio
-        import sys
-        
-        # 构建命令
-        cmd = []
-        # 尝试定位 nb 命令
-        import shutil
-        nb_path = shutil.which("nb")
-        
-        if not nb_path:
-            # 如果系统 PATH 中找不到，再尝试在 Python 脚本目录下找
-            script_dir = os.path.dirname(sys.executable)
-            possible_nb = os.path.join(script_dir, "nb.exe" if sys.platform == "win32" else "nb")
-            if os.path.exists(possible_nb):
-                nb_path = possible_nb
-            else:
-                nb_path = "nb" # 最后的保底，尝试直接运行 nb
-
-        # 获取项目根目录 (通常是当前工作目录)
-        root_dir = Path.cwd()
-
-        if action == "install":
-            cmd = [nb_path, "plugin", "install", plugin_name]
-        elif action == "update":
-            cmd = [nb_path, "plugin", "update", plugin_name]
-        elif action == "uninstall":
-            cmd = [nb_path, "plugin", "uninstall", plugin_name]
-        else:
-            return {"error": "无效操作"}
-            
-        logger.info(f"开始执行插件操作: {' '.join(cmd)} (工作目录: {root_dir})")
-        
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=str(root_dir)
-            )
-            
-            stdout_bytes, stderr_bytes = await process.communicate()
-            
-            def safe_decode(data: bytes) -> str:
-                if not data:
-                    return ""
-                for encoding in ["utf-8", "gbk", "cp936"]:
-                    try:
-                        return data.decode(encoding).strip()
-                    except UnicodeDecodeError:
-                        continue
-                return data.decode("utf-8", errors="replace").strip()
-
-            stdout = safe_decode(stdout_bytes)
-            stderr = safe_decode(stderr_bytes)
-            
-            if process.returncode == 0:
-                msg = f"插件 {plugin_name} {action} 成功"
-                logger.info(msg)
-                return {"msg": msg, "output": stdout}
-            else:
-                error_msg = stderr or stdout
-                logger.error(f"插件操作失败: {error_msg}")
-                return {"error": error_msg}
+            if not action or not plugin_name:
+                return {"error": "参数错误"}
                 
-        except Exception as e:
-            logger.error(f"执行插件命令时发生异常: {e}")
-            return {"error": str(e)}
+            if not re.match(r'^[a-zA-Z0-9_-]+$', plugin_name):
+                return {"error": "非法插件名称"}
+
+            # 执行命令
+            import asyncio
+            import sys
+            
+            # 构建命令
+            cmd = []
+            # 尝试定位 nb 命令
+            import shutil
+            nb_path = shutil.which("nb")
+            
+            if not nb_path:
+                # 如果系统 PATH 中找不到，再尝试在 Python 脚本目录下找
+                script_dir = os.path.dirname(sys.executable)
+                possible_nb = os.path.join(script_dir, "nb.exe" if sys.platform == "win32" else "nb")
+                if os.path.exists(possible_nb):
+                    nb_path = possible_nb
+                else:
+                    nb_path = "nb" # 最后的保底，尝试直接运行 nb
+
+            # 获取项目根目录 (通常是当前工作目录)
+            root_dir = Path.cwd()
+
+            if action == "install":
+                cmd = [nb_path, "plugin", "install", plugin_name]
+            elif action == "update":
+                cmd = [nb_path, "plugin", "update", plugin_name]
+            elif action == "uninstall":
+                cmd = [nb_path, "plugin", "uninstall", plugin_name]
+            else:
+                return {"error": "无效操作"}
+                
+            logger.info(f"开始执行插件操作: {' '.join(cmd)} (工作目录: {root_dir})")
+            
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=str(root_dir)
+                )
+                
+                stdout_bytes, stderr_bytes = await process.communicate()
+                
+                def safe_decode(data: bytes) -> str:
+                    if not data:
+                        return ""
+                    for encoding in ["utf-8", "gbk", "cp936"]:
+                        try:
+                            return data.decode(encoding).strip()
+                        except UnicodeDecodeError:
+                            continue
+                    return data.decode("utf-8", errors="replace").strip()
+
+                stdout = safe_decode(stdout_bytes)
+                stderr = safe_decode(stderr_bytes)
+                
+                if process.returncode == 0:
+                    msg = f"插件 {plugin_name} {action} 成功"
+                    logger.info(msg)
+                    return {"msg": msg, "output": stdout}
+                else:
+                    error_msg = stderr or stdout
+                    logger.error(f"插件操作失败: {error_msg}")
+                    return {"error": error_msg}
+                    
+            except Exception as e:
+                logger.error(f"执行插件命令时发生异常: {e}")
+                return {"error": str(e)}
 
     @app.post("/web_console/api/plugins/{plugin_id}/config", dependencies=[Depends(check_auth)])
     async def update_plugin_config(plugin_id: str, new_config: dict):
