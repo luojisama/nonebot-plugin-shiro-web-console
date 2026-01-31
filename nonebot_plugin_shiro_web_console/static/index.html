@@ -1092,6 +1092,19 @@
             }
         }
 
+        function compareVersions(v1, v2) {
+            const parts1 = v1.split('.').map(p => parseInt(p, 10) || 0);
+            const parts2 = v2.split('.').map(p => parseInt(p, 10) || 0);
+            
+            for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+                const n1 = parts1[i] || 0;
+                const n2 = parts2[i] || 0;
+                if (n1 > n2) return 1;
+                if (n1 < n2) return -1;
+            }
+            return 0;
+        }
+
         async function openUpdates() {
             const listEl = document.getElementById('updates-list');
             const countEl = document.getElementById('updates-count');
@@ -1122,12 +1135,12 @@
                     const storePlugin = storeData.find(s => s.module_name === local.module || s.project_link === local.id);
                     
                     if (storePlugin) {
-                        // 简单版本比较: 如果字符串不相等，且 store 版本通常较新
                         // 移除 'v' 前缀进行比较
                         const v1 = (local.version || '0.0.0').replace(/^v/, '');
                         const v2 = (storePlugin.version || '0.0.0').replace(/^v/, '');
                         
-                        if (v1 !== v2) {
+                        // 只显示商店版本大于本地版本的情况
+                        if (compareVersions(v2, v1) > 0) {
                             updates.push({
                                 local: local,
                                 store: storePlugin

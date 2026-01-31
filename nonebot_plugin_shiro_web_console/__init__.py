@@ -35,7 +35,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "author": "luojisama",
-        "version": "0.1.12",
+        "version": "0.1.13",
         "pypi_test": "nonebot-plugin-shiro-web-console",
     },
 )
@@ -611,6 +611,7 @@ if app:
     @app.get("/web_console/api/plugins", dependencies=[Depends(check_auth)])
     async def get_plugins():
         from nonebot import get_loaded_plugins
+        from importlib.metadata import version, PackageNotFoundError
         import os
         plugins = []
         for p in get_loaded_plugins():
@@ -627,11 +628,26 @@ if app:
             elif module_name.startswith("nonebot_plugin_"):
                 plugin_type = "store"
                 
+            # 获取版本号
+            ver = "0.0.0"
+            # 优先尝试从 importlib 获取真实安装版本
+            try:
+                # 尝试将包名中的下划线替换为连字符（常见 PyPI 命名规范）
+                pkg_name = module_name.replace("_", "-")
+                ver = version(pkg_name)
+            except PackageNotFoundError:
+                try:
+                    ver = version(module_name)
+                except PackageNotFoundError:
+                    # 如果获取失败，回退到元数据中的版本
+                    if metadata and metadata.extra and "version" in metadata.extra:
+                         ver = metadata.extra.get("version", "0.0.0")
+
             plugins.append({
                 "id": p.name,
                 "name": metadata.name if metadata else p.name,
                 "description": metadata.description if metadata else "暂无描述",
-                "version": metadata.extra.get("version", "1.0.0") if metadata and metadata.extra else "1.0.0",
+                "version": ver,
                 "type": plugin_type,
                 "module": module_name,
                 "homepage": metadata.homepage if metadata else None
