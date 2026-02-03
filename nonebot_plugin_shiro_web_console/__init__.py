@@ -35,7 +35,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "author": "luojisama",
-        "version": "0.1.19",
+        "version": "0.1.20",
         "pypi_test": "nonebot-plugin-shiro-web-console",
     },
 )
@@ -808,6 +808,9 @@ if app:
             if not re.match(r'^[a-zA-Z0-9_-]+$', plugin_name):
                 return {"error": "非法插件名称"}
 
+            # 规范化插件名称：将下划线替换为连字符，nb cli 通常使用连字符格式的包名
+            plugin_name = plugin_name.replace("_", "-")
+
             # 执行命令
             import asyncio
             import sys
@@ -816,26 +819,34 @@ if app:
             cmd = []
             # 尝试定位 nb 命令
             import shutil
+            nb_cmd = []
             nb_path = shutil.which("nb")
             
-            if not nb_path:
+            if nb_path:
+                nb_cmd = [nb_path]
+            else:
                 # 如果系统 PATH 中找不到，再尝试在 Python 脚本目录下找
                 script_dir = os.path.dirname(sys.executable)
                 possible_nb = os.path.join(script_dir, "nb.exe" if sys.platform == "win32" else "nb")
                 if os.path.exists(possible_nb):
-                    nb_path = possible_nb
+                    nb_cmd = [possible_nb]
                 else:
-                    nb_path = "nb" # 最后的保底，尝试直接运行 nb
+                    # 尝试使用 python -m nb_cli
+                    try:
+                        import nb_cli
+                        nb_cmd = [sys.executable, "-m", "nb_cli"]
+                    except ImportError:
+                        nb_cmd = ["nb"] # 最后的保底，尝试直接运行 nb
 
             # 获取项目根目录 (通常是当前工作目录)
             root_dir = Path.cwd()
 
             if action == "install":
-                cmd = [nb_path, "plugin", "install", plugin_name]
+                cmd = nb_cmd + ["plugin", "install", plugin_name]
             elif action == "update":
-                cmd = [nb_path, "plugin", "update", plugin_name]
+                cmd = nb_cmd + ["plugin", "update", plugin_name]
             elif action == "uninstall":
-                cmd = [nb_path, "plugin", "uninstall", plugin_name]
+                cmd = nb_cmd + ["plugin", "uninstall", plugin_name]
             else:
                 return {"error": "无效操作"}
                 
