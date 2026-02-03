@@ -35,7 +35,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "author": "luojisama",
-        "version": "0.1.13",
+        "version": "0.1.15",
         "pypi_test": "nonebot-plugin-shiro-web-console",
     },
 )
@@ -76,6 +76,15 @@ async def log_sink(message):
 
 # 注册 loguru sink
 logger.add(log_sink, format="{time} {level} {message}", level="INFO")
+
+# Async lock for plugin actions
+store_lock = asyncio.Lock()
+
+# Persistent log configuration
+log_dir = nonebot_plugin_localstore.get_plugin_data_dir() / "logs"
+log_dir.mkdir(parents=True, exist_ok=True)
+full_log_path = log_dir / "web_console_full.log"
+logger.add(full_log_path, rotation="10 MB", encoding="utf-8", level="INFO", format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {module}:{line} | {message}")
 
 # 验证码管理
 class AuthManager:
@@ -608,6 +617,12 @@ if app:
     async def get_logs():
         return list(log_buffer)
 
+    @app.get("/web_console/api/logs/download", dependencies=[Depends(check_auth)])
+    async def download_logs():
+        if not full_log_path.exists():
+             return Response("暂无日志记录", status_code=404)
+        return FileResponse(full_log_path, filename="nonebot_full.log", media_type="text/plain")
+
     @app.get("/web_console/api/plugins", dependencies=[Depends(check_auth)])
     async def get_plugins():
         from nonebot import get_loaded_plugins
@@ -1080,7 +1095,6 @@ if app:
                 # 保持连接，接收心跳或其他
                 await websocket.receive_text()
         except WebSocketDisconnect:
-            active_connections.remove(websocket)
+            active_connections.discard(websocket)
         except Exception:
-            if websocket in active_connections:
-                active_connections.remove(websocket)
+            active_connections.discard(websocket)
