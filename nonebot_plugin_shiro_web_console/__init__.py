@@ -35,7 +35,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "author": "luojisama",
-        "version": "0.1.16",
+        "version": "0.1.17",
         "pypi_test": "nonebot-plugin-shiro-web-console",
     },
 )
