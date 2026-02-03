@@ -30,6 +30,10 @@ web_console_password=your_password  # 设置固定登录密码
 
 ## 更新日志
 
+### v0.1.18
+- **修复**：尝试通过清理工作流配置来解决 GitHub Actions 触发失效问题。
+- **修复**：修复 WebSocket 连接清理时的竞争条件（KeyError），解决偶发的 500 错误。
+
 ### v0.1.17
 - **修复**：尝试修复 GitHub Actions 发布工作流触发问题。
 - **修复**：修复 WebSocket 连接清理时的竞争条件（KeyError），解决偶发的 500 错误。
