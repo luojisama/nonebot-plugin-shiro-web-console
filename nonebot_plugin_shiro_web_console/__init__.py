@@ -35,7 +35,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "author": "luojisama",
-        "version": "0.1.18",
+        "version": "0.1.19",
         "pypi_test": "nonebot-plugin-shiro-web-console",
     },
 )
@@ -646,17 +646,27 @@ if app:
             # 获取版本号
             ver = "0.0.0"
             # 优先尝试从 importlib 获取真实安装版本
-            try:
-                # 尝试将包名中的下划线替换为连字符（常见 PyPI 命名规范）
-                pkg_name = module_name.replace("_", "-")
-                ver = version(pkg_name)
-            except PackageNotFoundError:
+            # 插件包名通常与模块名一致，或者将下划线替换为连字符
+            pkg_names_to_try = [
+                module_name,
+                module_name.replace("_", "-"),
+                f"nonebot-plugin-{module_name.split('.')[-1]}"
+            ]
+            
+            # 如果是 nb_cli 安装的插件，可能需要读取 pyproject.toml (这里简化处理，依赖 importlib)
+            for pkg_name in pkg_names_to_try:
                 try:
-                    ver = version(module_name)
+                    ver = version(pkg_name)
+                    break
                 except PackageNotFoundError:
-                    # 如果获取失败，回退到元数据中的版本
-                    if metadata and metadata.extra and "version" in metadata.extra:
-                         ver = metadata.extra.get("version", "0.0.0")
+                    continue
+            
+            # 如果 importlib 失败，回退到元数据
+            if ver == "0.0.0" and metadata:
+                 if metadata.extra and "version" in metadata.extra:
+                     ver = metadata.extra.get("version", "0.0.0")
+                 elif hasattr(metadata, "version") and metadata.version:
+                     ver = metadata.version
 
             plugins.append({
                 "id": p.name,
