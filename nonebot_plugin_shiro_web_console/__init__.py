@@ -35,7 +35,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "author": "luojisama",
-        "version": "0.1.15",
+        "version": "0.1.16",
         "pypi_test": "nonebot-plugin-shiro-web-console",
     },
 )
@@ -55,7 +55,7 @@ async def broadcast_message(data: dict):
             dead_connections.add(ws)
     
     for ws in dead_connections:
-        active_connections.remove(ws)
+        active_connections.discard(ws)
 
 # 日志缓冲区，保留最近 200 条日志
 log_buffer = deque(maxlen=200)
