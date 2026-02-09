@@ -30,6 +30,9 @@ web_console_password=your_password  # 设置固定登录密码
 
 ## 更新日志
 
+### v0.1.21
+- **修复**：修复因 `nonebot_plugin_localstore` 加载顺序导致的 `RuntimeError`，确保插件能够正常加载。
+
 ### v0.1.20
 - **优化**：改进 `nb` 命令调用逻辑，支持自动规范化插件名称（处理下划线/连字符），增加 `python -m nb_cli` 调用方式作为回退，提高插件安装/更新的成功率。
 

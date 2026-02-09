@@ -17,6 +17,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Response, 
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from nonebot import get_app, get_bot, get_bots, get_driver, logger, on_message, on_command, require
+require("nonebot_plugin_localstore")
 import nonebot_plugin_localstore
 from .config import Config, config
 from nonebot.permission import SUPERUSER
@@ -35,7 +36,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "author": "luojisama",
-        "version": "0.1.20",
+        "version": "0.1.21",
         "pypi_test": "nonebot-plugin-shiro-web-console",
     },
 )
