@@ -30,6 +30,9 @@ web_console_password=your_password  # 设置固定登录密码
 
 ## 更新日志
 
+### v0.1.22
+- **优化**：改进日志下载功能，支持将多个轮转日志文件打包为 ZIP 格式下载，解决旧日志无法获取的问题。
+
 ### v0.1.21
 - **修复**：修复因 `nonebot_plugin_localstore` 加载顺序导致的 `RuntimeError`，确保插件能够正常加载。
 

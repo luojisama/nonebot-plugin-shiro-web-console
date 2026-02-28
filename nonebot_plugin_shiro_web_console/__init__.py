@@ -36,7 +36,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "author": "luojisama",
-        "version": "0.1.21",
+        "version": "0.1.22",
         "pypi_test": "nonebot-plugin-shiro-web-console",
     },
 )
@@ -620,9 +620,39 @@ if app:
 
     @app.get("/web_console/api/logs/download", dependencies=[Depends(check_auth)])
     async def download_logs():
-        if not full_log_path.exists():
-             return Response("暂无日志记录", status_code=404)
-        return FileResponse(full_log_path, filename="nonebot_full.log", media_type="text/plain")
+        if not log_dir.exists():
+             return Response("暂无日志目录", status_code=404)
+        
+        # 查找所有日志文件
+        log_files = list(log_dir.glob("*.log*"))
+        if not log_files:
+            return Response("暂无日志文件", status_code=404)
+            
+        # 如果只有一个文件且是当前日志，直接返回
+        if len(log_files) == 1 and log_files[0].name == "web_console_full.log":
+            return FileResponse(log_files[0], filename="nonebot_full.log", media_type="text/plain")
+
+        # 否则打包下载
+        import zipfile
+        import io
+        
+        # 创建内存中的 zip 文件
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            for log_file in log_files:
+                # 排除空文件或临时文件
+                if log_file.is_file():
+                    zip_file.write(log_file, arcname=log_file.name)
+        
+        zip_buffer.seek(0)
+        
+        # 返回流式响应
+        from fastapi.responses import StreamingResponse
+        return StreamingResponse(
+            zip_buffer, 
+            media_type="application/zip", 
+            headers={"Content-Disposition": f"attachment; filename=nonebot_logs_{int(time.time())}.zip"}
+        )
 
     @app.get("/web_console/api/plugins", dependencies=[Depends(check_auth)])
     async def get_plugins():

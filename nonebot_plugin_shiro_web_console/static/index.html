@@ -1715,7 +1715,18 @@
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `nonebot_full_${new Date().toISOString().slice(0,10)}.log`;
+                
+                // 尝试从 Content-Disposition 获取文件名
+                const contentDisposition = res.headers.get('Content-Disposition');
+                let filename = `nonebot_full_${new Date().toISOString().slice(0,10)}.log`;
+                
+                if (contentDisposition && contentDisposition.includes('filename=')) {
+                    filename = contentDisposition.split('filename=')[1].trim().replace(/"/g, '');
+                } else if (res.headers.get('content-type').includes('zip')) {
+                     filename = `nonebot_logs_${new Date().toISOString().slice(0,10)}.zip`;
+                }
+
+                a.download = filename;
                 document.body.appendChild(a);
                 a.click();
                 window.URL.revokeObjectURL(url);
