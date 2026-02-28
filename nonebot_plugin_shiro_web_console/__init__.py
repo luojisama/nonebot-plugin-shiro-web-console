@@ -657,10 +657,14 @@ if app:
     @app.get("/web_console/api/plugins", dependencies=[Depends(check_auth)])
     async def get_plugins():
         from nonebot import get_loaded_plugins
-        from importlib.metadata import version, PackageNotFoundError
+        from importlib.metadata import version, PackageNotFoundError, distributions
         import os
         plugins = []
+        loaded_modules = set()
+        
+        # 1. 获取已加载的插件
         for p in get_loaded_plugins():
+            loaded_modules.add(p.module_name)
             metadata = p.metadata
             
             # 识别插件来源
@@ -676,15 +680,12 @@ if app:
                 
             # 获取版本号
             ver = "0.0.0"
-            # 优先尝试从 importlib 获取真实安装版本
-            # 插件包名通常与模块名一致，或者将下划线替换为连字符
             pkg_names_to_try = [
                 module_name,
                 module_name.replace("_", "-"),
                 f"nonebot-plugin-{module_name.split('.')[-1]}"
             ]
             
-            # 如果是 nb_cli 安装的插件，可能需要读取 pyproject.toml (这里简化处理，依赖 importlib)
             for pkg_name in pkg_names_to_try:
                 try:
                     ver = version(pkg_name)
@@ -692,7 +693,6 @@ if app:
                 except PackageNotFoundError:
                     continue
             
-            # 如果 importlib 失败，回退到元数据
             if ver == "0.0.0" and metadata:
                  if metadata.extra and "version" in metadata.extra:
                      ver = metadata.extra.get("version", "0.0.0")
@@ -706,8 +706,43 @@ if app:
                 "version": ver,
                 "type": plugin_type,
                 "module": module_name,
-                "homepage": metadata.homepage if metadata else None
+                "homepage": metadata.homepage if metadata else None,
+                "enabled": True
             })
+
+        # 2. 查找已安装但未加载的插件 (Disabled)
+        # 仅扫描以 nonebot-plugin- 开头的包
+        for dist in distributions():
+            pkg_name = dist.metadata["Name"]
+            if not pkg_name.startswith("nonebot-plugin-"):
+                continue
+                
+            # 推测模块名：将连字符替换为下划线
+            module_name = pkg_name.replace("-", "_")
+            
+            # 如果该模块已加载，则跳过
+            if module_name in loaded_modules:
+                continue
+                
+            # 某些插件模块名可能与包名差异较大，这里尝试简单的 heuristic
+            # 也可以尝试读取 dist.files 查找 top_level.txt，但比较耗时
+            # 这里简单处理，如果不匹配则视为未加载
+            
+            # 排除 web console 自身 (虽然它通常是加载的)
+            if pkg_name == "nonebot-plugin-shiro-web-console":
+                continue
+
+            plugins.append({
+                "id": pkg_name,
+                "name": pkg_name, # 未加载插件可能无法获取详细元数据，使用包名
+                "description": dist.metadata.get("Summary", "未加载的插件"),
+                "version": dist.version,
+                "type": "store", # 假设都是 store 插件
+                "module": module_name,
+                "homepage": dist.metadata.get("Home-page"),
+                "enabled": False
+            })
+            
         return plugins
 
     @app.post("/web_console/api/system/action", dependencies=[Depends(check_auth)])
@@ -830,7 +865,7 @@ if app:
         
         async with store_lock:
             data = await request.json()
-            action = data.get("action")  # install, update, uninstall
+            action = data.get("action")  # install, update, uninstall, enable, disable
             plugin_name = data.get("plugin")
             
             if not action or not plugin_name:
@@ -838,6 +873,59 @@ if app:
                 
             if not re.match(r'^[a-zA-Z0-9_-]+$', plugin_name):
                 return {"error": "非法插件名称"}
+            
+            # 获取项目根目录 (通常是当前工作目录)
+            root_dir = Path.cwd()
+
+            # 处理启用/禁用操作
+            if action in ["enable", "disable"]:
+                try:
+                    import tomlkit
+                    pyproject_path = root_dir / "pyproject.toml"
+                    if not pyproject_path.exists():
+                        return {"error": "未找到 pyproject.toml，无法管理插件状态"}
+                    
+                    content = pyproject_path.read_text(encoding="utf-8")
+                    doc = tomlkit.parse(content)
+                    
+                    if "tool" not in doc or "nonebot" not in doc["tool"]:
+                        return {"error": "pyproject.toml 中缺少 [tool.nonebot] 配置"}
+                        
+                    plugins_config = doc["tool"]["nonebot"].get("plugins", [])
+                    
+                    # 确保是列表
+                    if not isinstance(plugins_config, list):
+                         plugins_config = list(plugins_config)
+                    
+                    # 确保使用模块名 (下划线)
+                    target_module = plugin_name.replace("-", "_")
+                    
+                    changed = False
+                    if action == "disable":
+                        if target_module in plugins_config:
+                            plugins_config.remove(target_module)
+                            changed = True
+                        else:
+                             return {"msg": f"插件 {target_module} 已禁用或未在配置中"}
+                    elif action == "enable":
+                        if target_module not in plugins_config:
+                            plugins_config.append(target_module)
+                            changed = True
+                        else:
+                             return {"msg": f"插件 {target_module} 已启用"}
+                             
+                    if changed:
+                        doc["tool"]["nonebot"]["plugins"] = plugins_config
+                        pyproject_path.write_text(tomlkit.dumps(doc), encoding="utf-8")
+                        return {"msg": f"插件 {target_module} 已{action == 'enable' and '启用' or '禁用'}，请重启机器人生效。"}
+                    
+                    return {"msg": "配置未变更"}
+                    
+                except ImportError:
+                    return {"error": "缺少 tomlkit 库，无法修改配置"}
+                except Exception as e:
+                    logger.error(f"修改 pyproject.toml 失败: {e}")
+                    return {"error": f"修改配置文件失败: {e}"}
 
             # 规范化插件名称：将下划线替换为连字符，nb cli 通常使用连字符格式的包名
             plugin_name = plugin_name.replace("_", "-")

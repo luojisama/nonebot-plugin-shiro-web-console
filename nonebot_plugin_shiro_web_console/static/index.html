@@ -1027,10 +1027,14 @@
                                 <div class="plugin-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px;">
                                     ${group.plugins.map(p => {
                                         const label = typeLabels[p.type] || typeLabels.local;
+                                        const isEnabled = p.enabled !== false;
                                         return `
-                                              <div class="plugin-card">
+                                              <div class="plugin-card" ${!isEnabled ? 'style="opacity: 0.75; border-style: dashed;"' : ''}>
                                                   <div class="plugin-header">
-                                                      <div class="plugin-name">${p.name || p.id}</div>
+                                                      <div class="plugin-name">
+                                                          ${p.name || p.id}
+                                                          ${!isEnabled ? '<span class="plugin-tag tag-invalid" style="margin-left: 8px; font-size: 0.6em; vertical-align: middle;">已禁用</span>' : ''}
+                                                      </div>
                                                       ${p.version ? `<div class="plugin-version">${p.version}</div>` : ''}
                                                   </div>
                                                   <div class="plugin-desc">${p.description || '暂无描述'}</div>
@@ -1038,8 +1042,14 @@
                                                       <span class="plugin-tag ${label.class}">${label.text}</span>
                                                       <div class="plugin-actions">
                                                           ${p.homepage ? `<a href="${p.homepage}" target="_blank" class="btn-icon" title="主页">🏠</a>` : ''}
+                                                          
+                                                          ${isEnabled ? 
+                                                              `<button onclick="handlePluginToggle('${p.module}', '${p.name}', false)" class="btn-icon" title="禁用" style="color: #ff9800; border-color: rgba(255, 152, 0, 0.2);">⛔</button>` :
+                                                              `<button onclick="handlePluginToggle('${p.module}', '${p.name}', true)" class="btn-icon" title="启用" style="color: #28a745; border-color: rgba(40, 167, 69, 0.2);">✅</button>`
+                                                          }
+                                                          
                                                           <button onclick="handlePluginUninstall('${p.module}', '${p.name}')" class="btn-icon" title="卸载" style="color: #dc3545; border-color: rgba(220, 53, 69, 0.2);">🗑️</button>
-                                                          <button onclick="openConfig('${p.id}')" class="btn-config">配置</button>
+                                                          <button onclick="openConfig('${p.id}')" class="btn-config" ${!isEnabled ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="需启用后才能配置"' : ''}>配置</button>
                                                       </div>
                                                   </div>
                                               </div>
@@ -1206,6 +1216,38 @@
                 const hasVisibleCards = Array.from(group.querySelectorAll('.plugin-card')).some(c => c.style.display !== 'none');
                 group.style.display = hasVisibleCards ? 'block' : 'none';
             });
+        }
+
+        async function handlePluginToggle(module, name, enable) {
+            const action = enable ? 'enable' : 'disable';
+            const actionText = enable ? '启用' : '禁用';
+            
+            if (!confirm(`确定要${actionText}插件 "${name}" 吗？\n${actionText}后需要重启机器人才能生效。`)) return;
+            
+            try {
+                // 显示处理中状态
+                const actionStatus = document.getElementById('action-status');
+                if (actionStatus) actionStatus.textContent = `正在${actionText} ${name}...`;
+
+                const res = await authorizedFetch('/web_console/api/store/action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: action, plugin: module })
+                });
+                
+                const data = await res.json();
+                if (data.error) {
+                    alert(`${actionText}失败: ` + data.error);
+                } else {
+                    alert(data.msg || `${actionText}成功，建议重启机器人以应用更改。`);
+                    fetchPlugins(); // 刷新列表
+                }
+            } catch (e) {
+                alert('请求失败');
+            } finally {
+                const actionStatus = document.getElementById('action-status');
+                if (actionStatus) actionStatus.textContent = '';
+            }
         }
 
         async function handlePluginUninstall(module, name) {
