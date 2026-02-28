@@ -28,7 +28,7 @@ START_TIME = time.time()
 
 __plugin_meta__ = PluginMetadata(
     name="Shiro Web Console",
-    description="通过浏览器查看日志、管理机器人并发送消息",
+    description="通过浏览器查看日志、管理机器人、管理插件并发送消息",
     usage="访问 /web_console 查看，在机器人聊天框发送“web控制台”获取登录码",
     type="application",
     homepage="https://github.com/luojisama/nonebot-plugin-shiro-web-console",
@@ -36,7 +36,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "author": "luojisama",
-        "version": "0.1.22",
+        "version": "0.1.23",
         "pypi_test": "nonebot-plugin-shiro-web-console",
     },
 )
