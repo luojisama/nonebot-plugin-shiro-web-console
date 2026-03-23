@@ -305,6 +305,150 @@
             border-radius: 3px 3px 0 0;
         }
 
+        /* 拟人插件页 */
+        .p13n-banner {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            padding: 18px 20px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            margin-bottom: 20px;
+        }
+        .p13n-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            border-radius: 999px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+        .p13n-badge.available { background: rgba(40, 167, 69, 0.15); color: #28a745; }
+        .p13n-badge.unavailable { background: rgba(220, 53, 69, 0.15); color: #dc3545; }
+        [data-theme="dark"] .p13n-badge.available { color: #81c784; background: rgba(40, 167, 69, 0.2); }
+        [data-theme="dark"] .p13n-badge.unavailable { color: #f87171; background: rgba(220, 53, 69, 0.2); }
+        .p13n-switch-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .p13n-switch-card, .p13n-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+        }
+        .p13n-switch-card {
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .p13n-switch-label {
+            font-size: 0.9em;
+            color: var(--text-secondary);
+        }
+        .p13n-switch-value {
+            font-size: 1.25em;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+        .p13n-card {
+            padding: 18px 20px;
+            margin-bottom: 20px;
+        }
+        .p13n-section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .p13n-section-header h3 {
+            margin: 0;
+            font-size: 1.02em;
+        }
+        .p13n-empty {
+            padding: 28px 20px;
+            text-align: center;
+            color: var(--text-secondary);
+            border: 1px dashed var(--border-color);
+            border-radius: 12px;
+            background: rgba(127, 127, 127, 0.05);
+        }
+        .p13n-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 760px;
+        }
+        .p13n-table th,
+        .p13n-table td {
+            padding: 12px 10px;
+            border-bottom: 1px solid var(--border-color);
+            text-align: left;
+            font-size: 0.92em;
+            vertical-align: top;
+        }
+        .p13n-table th {
+            color: var(--text-secondary);
+            font-weight: 600;
+            background: rgba(127, 127, 127, 0.04);
+        }
+        .p13n-chart-wrap {
+            position: relative;
+            height: 280px;
+        }
+        .p13n-chart-wrap canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+        .p13n-detail-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .p13n-detail-item {
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+            background: rgba(127, 127, 127, 0.04);
+        }
+        .p13n-detail-summary {
+            list-style: none;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            padding: 16px 18px;
+        }
+        .p13n-detail-summary::-webkit-details-marker { display: none; }
+        .p13n-detail-body {
+            padding: 0 18px 18px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+        .p13n-meta-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 10px 16px;
+            margin-bottom: 12px;
+        }
+        .p13n-prompt {
+            background: var(--bg-main);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 12px;
+            color: var(--text-main);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
         /* 移动端适配 */
         @media (max-width: 768px) {
             :root { 
@@ -355,6 +499,10 @@
             /* 弹窗调整 */
             #config-box { width: 95%; max-height: 90vh; }
             #store-box { width: 95% !important; height: 90vh !important; }
+            .p13n-banner,
+            .p13n-section-header,
+            .p13n-detail-summary { flex-direction: column; align-items: flex-start; }
+            .p13n-chart-wrap { height: 240px; }
             
             /* 防止 iOS 输入框自动缩放 */
             input, select, textarea { font-size: 16px !important; }
@@ -392,11 +540,12 @@
     </div>
     <div id="app">
         <div id="nav-bar">
-            <div class="nav-item active" onclick="showPage('home')" title="首页">🏠</div>
-            <div class="nav-item" onclick="showPage('chat')" title="聊天">💬</div>
-            <div class="nav-item" onclick="showPage('plugins')" title="插件管理">🧩</div>
-            <div class="nav-item" onclick="showPage('logs')" title="日志">📜</div>
-            <div class="nav-item" onclick="showPage('settings')" title="设置">⚙️</div>
+            <div class="nav-item active" data-page="home" onclick="showPage('home')" title="首页">🏠</div>
+            <div class="nav-item" data-page="chat" onclick="showPage('chat')" title="聊天">💬</div>
+            <div class="nav-item" data-page="plugins" onclick="showPage('plugins')" title="插件管理">🧩</div>
+            <div class="nav-item" data-page="logs" onclick="showPage('logs')" title="日志">📜</div>
+            <div class="nav-item" data-page="personification" onclick="showPage('personification')" title="拟人插件">🤖</div>
+            <div class="nav-item" data-page="settings" onclick="showPage('settings')" title="设置">⚙️</div>
         </div>
         <div id="content-wrapper">
             <!-- 首页/仪表盘 -->
@@ -578,7 +727,85 @@
                             <div class="setting-item">
                                 <div>
                                     <div style="font-weight: 500;">NoneBot Web Console</div>
-                                    <div style="font-size: 0.85em; color: var(--text-secondary);">版本 v1.2.0</div>
+                                    <div style="font-size: 0.85em; color: var(--text-secondary);">版本 v0.1.24</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="page-personification" class="page">
+                <div class="main-view">
+                    <div class="page-header">
+                        <div style="font-weight: bold; font-size: 1.2em;">拟人插件</div>
+                        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-left: auto;">
+                            <input
+                                type="text"
+                                id="p13n-group-search"
+                                placeholder="搜索群名或群号..."
+                                oninput="filterP13nGroups()"
+                                style="padding: 8px 14px; border: 1px solid var(--border-color); border-radius: 999px; background: var(--bg-input); color: var(--text-main); min-width: 220px;"
+                            >
+                            <button onclick="fetchPersonification()" style="padding: 8px 14px; background: var(--primary-color); color: white; border: none; border-radius: 8px; cursor: pointer;">刷新</button>
+                        </div>
+                    </div>
+                    <div class="page-content">
+                        <div id="p13n-status-banner" class="p13n-banner">
+                            <div>
+                                <div style="font-weight: 700; font-size: 1.05em; margin-bottom: 6px;">拟人插件兼容状态</div>
+                                <div id="p13n-status-text" style="color: var(--text-secondary);">正在检测 nonebot-plugin-shiro-personification...</div>
+                            </div>
+                            <div id="p13n-status-badge" class="p13n-badge unavailable">未检测</div>
+                        </div>
+
+                        <div id="p13n-install-tip" class="p13n-empty" style="display: none;"></div>
+
+                        <div id="p13n-main-sections">
+                            <div id="p13n-global-cards" class="p13n-switch-grid"></div>
+
+                            <div class="p13n-card">
+                                <div class="p13n-section-header">
+                                    <h3>群聊调用统计</h3>
+                                    <div id="p13n-table-count" style="color: var(--text-secondary); font-size: 0.9em;">-</div>
+                                </div>
+                                <div style="overflow-x: auto;">
+                                    <table class="p13n-table">
+                                        <thead>
+                                            <tr>
+                                                <th>群 ID</th>
+                                                <th>群名称</th>
+                                                <th>今日调用</th>
+                                                <th>总调用</th>
+                                                <th>历史消息条数</th>
+                                                <th>会话上下文长度</th>
+                                                <th>状态</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="p13n-group-table-body">
+                                            <tr><td colspan="7" style="text-align: center; color: var(--text-secondary);">正在加载...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div class="p13n-card">
+                                <div class="p13n-section-header">
+                                    <h3>群聊调用趋势（近 7 天）</h3>
+                                </div>
+                                <div class="p13n-chart-wrap">
+                                    <canvas id="p13n-chart"></canvas>
+                                    <div id="p13n-chart-empty" class="p13n-empty" style="display: none;">暂无调用记录</div>
+                                </div>
+                            </div>
+
+                            <div class="p13n-card">
+                                <div class="p13n-section-header">
+                                    <h3>各群配置详情</h3>
+                                    <div id="p13n-detail-count" style="color: var(--text-secondary); font-size: 0.9em;">-</div>
+                                </div>
+                                <div id="p13n-details" class="p13n-detail-list">
+                                    <div class="p13n-empty">正在加载...</div>
                                 </div>
                             </div>
                         </div>
@@ -610,6 +837,12 @@
         let ws = null;
         let authToken = localStorage.getItem('web_console_token');
         let currentEditingPlugin = null;
+        let chatsCache = { groups: [], private: [] };
+        let p13nStatus = null;
+        let p13nStats = null;
+        let p13nChart = null;
+        let p13nChartScriptPromise = null;
+        let p13nMergedGroups = [];
 
         const appEl = document.getElementById('app');
         const loginMask = document.getElementById('login-mask');
@@ -624,23 +857,24 @@
             document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
             document.getElementById(`page-${pageId}`).classList.add('active');
-            
-            // 更新导航图标激活状态
-            const navItems = document.querySelectorAll('.nav-item');
-            if (pageId === 'home') { navItems[0].classList.add('active'); fetchStatus(); }
-            else if (pageId === 'chat') {
-                navItems[1].classList.add('active');
+
+            const activeNav = document.querySelector(`.nav-item[data-page="${pageId}"]`);
+            if (activeNav) activeNav.classList.add('active');
+
+            if (pageId === 'home') {
+                fetchStatus();
+            } else if (pageId === 'chat') {
                 // 移动端切换到聊天页时，如果没有选择聊天，则显示侧边栏
                 if (window.innerWidth <= 768 && !currentChatId) {
                     toggleSidebar(true);
                 }
-            }
-            else if (pageId === 'plugins') { 
-                navItems[2].classList.add('active'); 
+            } else if (pageId === 'plugins') {
                 fetchPlugins(); 
+            } else if (pageId === 'logs') {
+                fetchLogs();
+            } else if (pageId === 'personification') {
+                fetchPersonification();
             }
-            else if (pageId === 'logs') { navItems[3].classList.add('active'); fetchLogs(); }
-            else if (pageId === 'settings') navItems[4].classList.add('active');
 
             // 移动端切换到非聊天页时隐藏侧边栏
             if (window.innerWidth <= 768 && pageId !== 'chat') {
@@ -840,6 +1074,10 @@
                 localStorage.setItem('web-console-theme', 'light');
                 if (icon) icon.textContent = '🌙';
                 if (text) text.textContent = '深色模式';
+            }
+
+            if (p13nStats && document.getElementById('page-personification').classList.contains('active')) {
+                renderP13nChart(p13nStats);
             }
         }
 
@@ -1593,7 +1831,7 @@
                     chatListEl.innerHTML = `<div style="padding: 20px; color: red;">错误: ${data.error}</div>`;
                     return;
                 }
-                
+                chatsCache = data;
                 renderChatList(data);
             } catch (e) {}
         }
@@ -1619,6 +1857,309 @@
                 div.onclick = () => selectChat(chat, div);
                 chatListEl.appendChild(div);
             });
+        }
+
+        function getLocalDateKey(date = new Date()) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        function getRecentDateKeys(days = 7) {
+            const dates = [];
+            const base = new Date();
+            for (let offset = days - 1; offset >= 0; offset--) {
+                const current = new Date(base);
+                current.setDate(base.getDate() - offset);
+                dates.push(getLocalDateKey(current));
+            }
+            return dates;
+        }
+
+        function renderP13nGlobalCards(globalState = {}) {
+            const container = document.getElementById('p13n-global-cards');
+            const cards = [
+                { label: '联网搜索', key: 'web_search' },
+                { label: '作息模拟', key: 'schedule_global' },
+                { label: '主动消息', key: 'proactive_enabled' }
+            ];
+
+            container.innerHTML = cards.map(card => {
+                const enabled = Boolean(globalState[card.key]);
+                return `
+                    <div class="p13n-switch-card">
+                        <div class="p13n-switch-label">${card.label}</div>
+                        <div class="p13n-switch-value">${enabled ? '开启' : '关闭'}</div>
+                        <div class="plugin-tag ${enabled ? 'tag-valid' : 'tag-invalid'}" style="width: fit-content;">
+                            ${enabled ? '运行中' : '已关闭'}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderP13nDetails(groups) {
+            const container = document.getElementById('p13n-details');
+            document.getElementById('p13n-detail-count').textContent = `共 ${groups.length} 个群`;
+
+            if (!groups.length) {
+                container.innerHTML = '<div class="p13n-empty">暂无群配置详情</div>';
+                return;
+            }
+
+            container.innerHTML = groups.map(group => `
+                <details class="p13n-detail-item">
+                    <summary class="p13n-detail-summary">
+                        <div>
+                            <div style="font-weight: 700;">${escapeHtml(group.name)}</div>
+                            <div style="color: var(--text-secondary); font-size: 0.88em; margin-top: 4px;">群号 ${escapeHtml(group.rawId)}</div>
+                        </div>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <span class="plugin-tag ${group.enabled ? 'tag-valid' : 'tag-invalid'}">${group.enabled ? '已启用' : '已禁用'}</span>
+                            <span class="plugin-tag ${group.stickerEnabled ? 'tag-valid' : 'tag-invalid'}">${group.stickerEnabled ? '表情包开' : '表情包关'}</span>
+                        </div>
+                    </summary>
+                    <div class="p13n-detail-body">
+                        <div class="p13n-meta-grid">
+                            <div>最近消息记录数：${group.recentMessagesCount}</div>
+                            <div>会话历史条数：${group.sessionHistoryLen}</div>
+                            <div>今日调用：${group.todayCalls}</div>
+                            <div>总调用：${group.totalCalls}</div>
+                        </div>
+                        <div style="margin-bottom: 8px;">自定义 Prompt</div>
+                        <div class="p13n-prompt">${escapeHtml(group.customPrompt || '未设置自定义 Prompt')}</div>
+                    </div>
+                </details>
+            `).join('');
+        }
+
+        function renderP13nGroupTable(groups) {
+            const tbody = document.getElementById('p13n-group-table-body');
+            document.getElementById('p13n-table-count').textContent = `共 ${groups.length} 个群`;
+
+            if (!groups.length) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-secondary);">暂无拟人插件群数据</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = groups.map(group => `
+                <tr>
+                    <td>${escapeHtml(group.rawId)}</td>
+                    <td>${escapeHtml(group.name)}</td>
+                    <td>${group.todayCalls}</td>
+                    <td>${group.totalCalls}</td>
+                    <td>${group.recentMessagesCount}</td>
+                    <td>${group.sessionHistoryLen}</td>
+                    <td><span class="plugin-tag ${group.enabled ? 'tag-valid' : 'tag-invalid'}">${group.enabled ? '已启用' : '已禁用'}</span></td>
+                </tr>
+            `).join('');
+        }
+
+        async function ensureP13nChartLibrary() {
+            if (window.Chart) return;
+            if (!p13nChartScriptPromise) {
+                p13nChartScriptPromise = new Promise((resolve, reject) => {
+                    const existing = document.querySelector('script[data-p13n-chartjs="true"]');
+                    if (existing) {
+                        existing.addEventListener('load', resolve, { once: true });
+                        existing.addEventListener('error', reject, { once: true });
+                        return;
+                    }
+
+                    const script = document.createElement('script');
+                    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';
+                    script.dataset.p13nChartjs = 'true';
+                    script.onload = resolve;
+                    script.onerror = () => reject(new Error('Chart.js 加载失败'));
+                    document.head.appendChild(script);
+                });
+            }
+            return p13nChartScriptPromise;
+        }
+
+        async function renderP13nChart(stats) {
+            const canvas = document.getElementById('p13n-chart');
+            const emptyEl = document.getElementById('p13n-chart-empty');
+            if (!canvas || !emptyEl) return;
+
+            const labels = getRecentDateKeys(7);
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim() || (isDark ? '#aaaaaa' : '#605e5c');
+            const borderColor = getComputedStyle(document.documentElement).getPropertyValue('--border-color').trim() || (isDark ? '#333333' : '#edebe9');
+            const groups = stats?.groups || {};
+            const datasets = Object.entries(groups).map(([groupKey, groupStats], index) => {
+                const daily = groupStats?.daily || {};
+                const values = labels.map(label => Number(daily[label] || 0));
+                const total = values.reduce((sum, value) => sum + value, 0);
+                if (!total) return null;
+                const hue = (index * 67) % 360;
+                const color = `hsl(${hue}, 72%, ${isDark ? '65%' : '45%'})`;
+                const groupMeta = p13nMergedGroups.find(item => item.id === groupKey);
+                return {
+                    label: groupMeta ? groupMeta.name : groupKey.replace('group_', '群 '),
+                    data: values,
+                    borderColor: color,
+                    backgroundColor: color,
+                    tension: 0.28,
+                    fill: false,
+                };
+            }).filter(Boolean);
+
+            if (!datasets.length) {
+                if (p13nChart) {
+                    p13nChart.destroy();
+                    p13nChart = null;
+                }
+                canvas.style.display = 'none';
+                emptyEl.style.display = 'flex';
+                return;
+            }
+
+            emptyEl.style.display = 'none';
+            canvas.style.display = 'block';
+            await ensureP13nChartLibrary();
+
+            if (p13nChart) {
+                p13nChart.destroy();
+            }
+
+            p13nChart = new Chart(canvas.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets,
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: textColor,
+                            },
+                        },
+                        title: {
+                            display: true,
+                            text: '群聊调用趋势（近 7 天）',
+                            color: textColor,
+                        },
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: textColor },
+                            grid: { color: borderColor },
+                        },
+                        y: {
+                            beginAtZero: true,
+                            ticks: { color: textColor, precision: 0 },
+                            grid: { color: borderColor },
+                        },
+                    },
+                },
+            });
+        }
+
+        function filterP13nGroups() {
+            const keyword = (document.getElementById('p13n-group-search')?.value || '').trim().toLowerCase();
+            const filtered = p13nMergedGroups.filter(group => {
+                return group.name.toLowerCase().includes(keyword) || group.rawId.toLowerCase().includes(keyword);
+            });
+            renderP13nGroupTable(filtered);
+            renderP13nDetails(filtered);
+        }
+
+        async function fetchPersonification() {
+            const bannerText = document.getElementById('p13n-status-text');
+            const badge = document.getElementById('p13n-status-badge');
+            const installTip = document.getElementById('p13n-install-tip');
+            const mainSections = document.getElementById('p13n-main-sections');
+
+            bannerText.textContent = '正在读取拟人插件状态与统计数据...';
+            badge.textContent = '加载中';
+            badge.className = 'p13n-badge unavailable';
+
+            try {
+                const chatsPromise = chatsCache.groups?.length
+                    ? Promise.resolve(chatsCache)
+                    : authorizedFetch('/web_console/api/chats').then(res => res.json());
+
+                const [statusRes, statsRes, chatsData] = await Promise.all([
+                    authorizedFetch('/web_console/api/personification/status'),
+                    authorizedFetch('/web_console/api/personification/stats'),
+                    chatsPromise,
+                ]);
+
+                p13nStatus = statusRes instanceof Response ? await statusRes.json() : statusRes;
+                p13nStats = statsRes instanceof Response ? await statsRes.json() : statsRes;
+                if (chatsData && !chatsData.error) {
+                    chatsCache = chatsData;
+                }
+
+                if (!p13nStatus?.available) {
+                    installTip.style.display = 'block';
+                    mainSections.style.display = 'none';
+                    bannerText.textContent = p13nStatus?.error || '未检测到 nonebot-plugin-shiro-personification，请先安装该插件';
+                    badge.textContent = '不可用';
+                    badge.className = 'p13n-badge unavailable';
+                    installTip.textContent = p13nStatus?.error || '未检测到 nonebot-plugin-shiro-personification，请先安装该插件';
+                    if (p13nChart) {
+                        p13nChart.destroy();
+                        p13nChart = null;
+                    }
+                    return;
+                }
+
+                installTip.style.display = 'none';
+                mainSections.style.display = 'block';
+                bannerText.textContent = '已检测到 nonebot-plugin-shiro-personification，当前面板展示只读状态与调用统计。';
+                badge.textContent = '已启用';
+                badge.className = 'p13n-badge available';
+
+                renderP13nGlobalCards(p13nStatus.global || {});
+
+                const groupNameMap = new Map((chatsCache.groups || []).map(group => [group.id, group.name]));
+                const statusGroups = p13nStatus.groups || {};
+                const statGroups = p13nStats?.groups || {};
+                const todayKey = getLocalDateKey();
+                const groupKeys = new Set([...Object.keys(statusGroups), ...Object.keys(statGroups)]);
+
+                p13nMergedGroups = Array.from(groupKeys).map(groupKey => {
+                    const status = statusGroups[groupKey] || {};
+                    const stat = statGroups[groupKey] || {};
+                    const rawId = groupKey.replace('group_', '');
+                    return {
+                        id: groupKey,
+                        rawId,
+                        name: groupNameMap.get(groupKey) || `群 ${rawId}`,
+                        todayCalls: Number(stat.daily?.[todayKey] || 0),
+                        totalCalls: Number(stat.total || 0),
+                        sessionHistoryLen: Number(status.session_history_len || 0),
+                        recentMessagesCount: Number(status.recent_messages_count || 0),
+                        enabled: Boolean(status.enabled),
+                        stickerEnabled: Boolean(status.sticker_enabled),
+                        customPrompt: status.custom_prompt || '',
+                    };
+                }).sort((a, b) => {
+                    if (b.totalCalls !== a.totalCalls) return b.totalCalls - a.totalCalls;
+                    return a.name.localeCompare(b.name, 'zh-CN');
+                });
+
+                filterP13nGroups();
+                await renderP13nChart(p13nStats);
+            } catch (e) {
+                console.error('获取拟人插件面板失败', e);
+                installTip.style.display = 'block';
+                installTip.textContent = `加载失败：${e.message || e}`;
+                mainSections.style.display = 'none';
+                bannerText.textContent = '拟人插件面板加载失败';
+                badge.textContent = '错误';
+                badge.className = 'p13n-badge unavailable';
+            }
         }
 
         // 选择聊天
