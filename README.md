@@ -30,6 +30,11 @@ web_console_password=your_password  # 设置固定登录密码
 
 ## 更新日志
 
+### v0.2.0
+- **新增**：为 `nonebot-plugin-shiro-personification` 与本地 `personification` 提供统一的 Web Console 联动兼容层。
+- **新增**：拟人插件页面支持图形化查看和修改运行时全局配置、群配置与自定义 Prompt。
+- **优化**：拟人插件状态页增加白名单、作息模拟、语音回复等群级状态展示，并兼容双插件变体自动识别。
+
 ### v0.1.23
 - **新增**：支持在 Web 控制台启用或禁用插件（需要 `tomlkit` 库支持）。
 - **优化**：改进已安装插件的检测逻辑，支持识别已安装但未加载的插件。

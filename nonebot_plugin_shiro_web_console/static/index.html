@@ -373,6 +373,41 @@
             margin: 0;
             font-size: 1.02em;
         }
+        .p13n-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .p13n-btn {
+            padding: 8px 14px;
+            border-radius: 8px;
+            border: 1px solid var(--primary-color);
+            background: transparent;
+            color: var(--primary-color);
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .p13n-btn:hover {
+            background: var(--primary-color);
+            color: white;
+        }
+        .p13n-btn.secondary {
+            border-color: var(--border-color);
+            color: var(--text-main);
+            background: var(--bg-card);
+        }
+        .p13n-btn.secondary:hover {
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+            background: rgba(0, 120, 212, 0.08);
+        }
+        .config-note {
+            font-size: 0.84em;
+            color: var(--text-secondary);
+            margin-top: 6px;
+            line-height: 1.5;
+        }
         .p13n-empty {
             padding: 28px 20px;
             text-align: center;
@@ -727,7 +762,7 @@
                             <div class="setting-item">
                                 <div>
                                     <div style="font-weight: 500;">NoneBot Web Console</div>
-                                    <div style="font-size: 0.85em; color: var(--text-secondary);">版本 v0.1.24</div>
+                                    <div style="font-size: 0.85em; color: var(--text-secondary);">版本 v0.2.0</div>
                                 </div>
                             </div>
                         </div>
@@ -740,6 +775,7 @@
                     <div class="page-header">
                         <div style="font-weight: bold; font-size: 1.2em;">拟人插件</div>
                         <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-left: auto;">
+                            <button onclick="openP13nGlobalConfig()" class="p13n-btn">编辑全局配置</button>
                             <input
                                 type="text"
                                 id="p13n-group-search"
@@ -754,7 +790,7 @@
                         <div id="p13n-status-banner" class="p13n-banner">
                             <div>
                                 <div style="font-weight: 700; font-size: 1.05em; margin-bottom: 6px;">拟人插件兼容状态</div>
-                                <div id="p13n-status-text" style="color: var(--text-secondary);">正在检测 nonebot-plugin-shiro-personification...</div>
+                                <div id="p13n-status-text" style="color: var(--text-secondary);">正在检测 nonebot-plugin-shiro-personification / personification ...</div>
                             </div>
                             <div id="p13n-status-badge" class="p13n-badge unavailable">未检测</div>
                         </div>
@@ -780,10 +816,11 @@
                                                 <th>历史消息条数</th>
                                                 <th>会话上下文长度</th>
                                                 <th>状态</th>
+                                                <th>操作</th>
                                             </tr>
                                         </thead>
                                         <tbody id="p13n-group-table-body">
-                                            <tr><td colspan="7" style="text-align: center; color: var(--text-secondary);">正在加载...</td></tr>
+                                            <tr><td colspan="8" style="text-align: center; color: var(--text-secondary);">正在加载...</td></tr>
                                         </tbody>
                                     </table>
                                 </div>
@@ -837,6 +874,8 @@
         let ws = null;
         let authToken = localStorage.getItem('web_console_token');
         let currentEditingPlugin = null;
+        let currentEditingContext = null;
+        let currentEditingGroupId = null;
         let chatsCache = { groups: [], private: [] };
         let p13nStatus = null;
         let p13nStats = null;
@@ -1521,7 +1560,9 @@
         }
 
         async function openConfig(pluginId) {
+            currentEditingContext = 'plugin';
             currentEditingPlugin = pluginId;
+            currentEditingGroupId = null;
             const modal = document.getElementById('config-modal');
             const body = document.getElementById('modal-body');
             document.getElementById('modal-title').textContent = `配置插件: ${pluginId}`;
@@ -1555,14 +1596,14 @@
                 const val = config[key] !== undefined ? config[key] : (item.default || '');
                 
                 if (item.type === 'boolean') {
-                    inputHtml = `<select id="conf-${key}">
+                    inputHtml = `<select id="conf-${key}" data-value-type="boolean">
                         <option value="true" ${val === true ? 'selected' : ''}>True</option>
                         <option value="false" ${val === false ? 'selected' : ''}>False</option>
                     </select>`;
                 } else if (item.type === 'integer' || item.type === 'number') {
-                    inputHtml = `<input type="number" id="conf-${key}" value="${val}">`;
+                    inputHtml = `<input type="number" id="conf-${key}" data-value-type="${item.type}" value="${val}">`;
                 } else {
-                    inputHtml = `<input type="text" id="conf-${key}" value="${val}">`;
+                    inputHtml = `<input type="text" id="conf-${key}" data-value-type="${item.type || 'string'}" value="${escapeHtml(String(val ?? ''))}">`;
                 }
 
                 div.innerHTML = `
@@ -1577,41 +1618,170 @@
             }
         }
 
-        function closeConfig() {
-            document.getElementById('config-modal').style.display = 'none';
+        async function openP13nGlobalConfig() {
+            currentEditingContext = 'p13n-global';
             currentEditingPlugin = null;
+            currentEditingGroupId = null;
+            const modal = document.getElementById('config-modal');
+            const body = document.getElementById('modal-body');
+            document.getElementById('modal-title').textContent = '拟人插件全局配置';
+            body.innerHTML = '<div style="text-align: center; color: #999;">正在加载配置项...</div>';
+            modal.style.display = 'flex';
+
+            try {
+                const res = await authorizedFetch('/web_console/api/personification/config');
+                const data = await res.json();
+                if (!data.available) {
+                    throw new Error(data.error || '拟人插件不可用');
+                }
+                renderEntryConfigForm(data.entries || []);
+            } catch (e) {
+                body.innerHTML = `<div style="text-align: center; color: red;">加载配置项失败：${escapeHtml(e.message || String(e))}</div>`;
+            }
         }
 
-        document.getElementById('save-config-btn').onclick = async () => {
+        async function openP13nGroupConfig(groupId) {
+            currentEditingContext = 'p13n-group';
+            currentEditingPlugin = null;
+            currentEditingGroupId = groupId;
+            const modal = document.getElementById('config-modal');
+            const body = document.getElementById('modal-body');
+            const groupMeta = p13nMergedGroups.find(item => item.id === groupId);
+            document.getElementById('modal-title').textContent = `拟人群配置: ${groupMeta ? groupMeta.name : groupId}`;
+            body.innerHTML = '<div style="text-align: center; color: #999;">正在加载群配置...</div>';
+            modal.style.display = 'flex';
+
+            try {
+                const res = await authorizedFetch(`/web_console/api/personification/group/${groupId}/config`);
+                const data = await res.json();
+                if (!data.available) {
+                    throw new Error(data.error || '拟人插件不可用');
+                }
+                renderEntryConfigForm(data.entries || []);
+            } catch (e) {
+                body.innerHTML = `<div style="text-align: center; color: red;">加载群配置失败：${escapeHtml(e.message || String(e))}</div>`;
+            }
+        }
+
+        function renderEntryConfigForm(entries) {
+            const body = document.getElementById('modal-body');
+            body.innerHTML = '';
+
+            if (!entries || !entries.length) {
+                body.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">没有可编辑的配置项</div>';
+                return;
+            }
+
+            entries.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'config-item';
+                const key = item.key;
+                const value = item.value ?? item.default ?? '';
+                const valueType = item.value_type || 'str';
+                const choices = Array.isArray(item.choices) ? item.choices : [];
+                let inputHtml = '';
+
+                if (valueType === 'bool') {
+                    inputHtml = `
+                        <select id="conf-${key}" data-value-type="bool">
+                            <option value="true" ${value === true ? 'selected' : ''}>开启</option>
+                            <option value="false" ${value === false ? 'selected' : ''}>关闭</option>
+                        </select>
+                    `;
+                } else if (choices.length) {
+                    inputHtml = `
+                        <select id="conf-${key}" data-value-type="${valueType}">
+                            ${choices.map(choice => `<option value="${escapeHtml(String(choice))}" ${String(choice) === String(value) ? 'selected' : ''}>${escapeHtml(String(choice))}</option>`).join('')}
+                        </select>
+                    `;
+                } else if (valueType === 'int' || valueType === 'integer' || valueType === 'number' || valueType === 'float') {
+                    inputHtml = `<input type="number" id="conf-${key}" data-value-type="${valueType}" value="${Number(value ?? 0)}">`;
+                } else if (key.includes('prompt')) {
+                    inputHtml = `<textarea id="conf-${key}" data-value-type="str" rows="6">${escapeHtml(String(value || ''))}</textarea>`;
+                } else {
+                    inputHtml = `<input type="text" id="conf-${key}" data-value-type="${valueType}" value="${escapeHtml(String(value || ''))}">`;
+                }
+
+                const notes = [];
+                if (item.default !== undefined) {
+                    notes.push(`默认值：${escapeHtml(String(item.default))}`);
+                }
+                if (item.choices_text) {
+                    notes.push(`可选值：${escapeHtml(String(item.choices_text))}`);
+                }
+
+                div.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <label style="margin-bottom: 0;">${escapeHtml(item.label || key)}</label>
+                        <code style="font-size: 0.8em; color: #999; background: #f0f0f0; padding: 2px 4px; border-radius: 3px;">${escapeHtml(key)}</code>
+                    </div>
+                    <div style="margin-top: 8px;">${inputHtml}</div>
+                    ${item.description ? `<div class="config-note">${escapeHtml(item.description)}</div>` : ''}
+                    ${notes.length ? `<div class="config-note">${notes.join(' ｜ ')}</div>` : ''}
+                `;
+                body.appendChild(div);
+            });
+        }
+
+        function collectConfigFormValues() {
             const body = document.getElementById('modal-body');
             const inputs = body.querySelectorAll('input, select, textarea');
             const newConfig = {};
             inputs.forEach(input => {
                 const key = input.id.replace('conf-', '');
+                const valueType = input.dataset.valueType || input.getAttribute('data-value-type') || 'string';
                 let val = input.value;
-                if (input.tagName === 'SELECT') {
+                if (valueType === 'bool' || valueType === 'boolean') {
                     val = val === 'true';
-                } else if (input.type === 'number') {
+                } else if (valueType === 'int' || valueType === 'integer' || valueType === 'number') {
+                    val = Number(val);
+                } else if (valueType === 'float') {
                     val = Number(val);
                 }
                 newConfig[key] = val;
             });
+            return newConfig;
+        }
+
+        function closeConfig() {
+            document.getElementById('config-modal').style.display = 'none';
+            currentEditingPlugin = null;
+            currentEditingContext = null;
+            currentEditingGroupId = null;
+        }
+
+        document.getElementById('save-config-btn').onclick = async () => {
+            const newConfig = collectConfigFormValues();
 
             try {
-                const res = await authorizedFetch(`/web_console/api/plugins/${currentEditingPlugin}/config`, {
+                let targetUrl = '';
+                if (currentEditingContext === 'plugin') {
+                    targetUrl = `/web_console/api/plugins/${currentEditingPlugin}/config`;
+                } else if (currentEditingContext === 'p13n-global') {
+                    targetUrl = '/web_console/api/personification/config';
+                } else if (currentEditingContext === 'p13n-group') {
+                    targetUrl = `/web_console/api/personification/group/${currentEditingGroupId}/config`;
+                } else {
+                    throw new Error('未知配置上下文');
+                }
+
+                const res = await authorizedFetch(targetUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(newConfig)
                 });
                 const data = await res.json();
-                if (data.success) {
-                    alert('配置已保存（部分配置可能需要重启生效）');
+                if (data.success || data.available) {
+                    alert(currentEditingContext === 'plugin' ? '配置已保存（部分配置可能需要重启生效）' : '拟人配置已保存');
                     closeConfig();
+                    if (document.getElementById('page-personification').classList.contains('active')) {
+                        await fetchPersonification();
+                    }
                 } else {
                     alert('保存失败: ' + (data.error || '未知错误'));
                 }
             } catch (e) {
-                alert('请求失败');
+                alert('请求失败: ' + (e.message || e));
             }
         };
 
@@ -1880,13 +2050,16 @@
         function renderP13nGlobalCards(globalState = {}) {
             const container = document.getElementById('p13n-global-cards');
             const cards = [
-                { label: '联网搜索', key: 'web_search' },
-                { label: '作息模拟', key: 'schedule_global' },
-                { label: '主动消息', key: 'proactive_enabled' }
+                { label: '全局拟人回复', key: 'global_enabled' },
+                { label: '工具联网搜索', key: 'tool_web_search_enabled', fallbackKey: 'web_search' },
+                { label: '全局作息模拟', key: 'schedule_global' },
+                { label: '主动私聊', key: 'proactive_enabled' },
+                { label: '群空闲发话', key: 'group_idle_enabled' },
+                { label: '全局语音回复', key: 'tts_global_enabled' }
             ];
 
             container.innerHTML = cards.map(card => {
-                const enabled = Boolean(globalState[card.key]);
+                const enabled = Boolean(globalState[card.key] ?? globalState[card.fallbackKey]);
                 return `
                     <div class="p13n-switch-card">
                         <div class="p13n-switch-label">${card.label}</div>
@@ -1917,7 +2090,10 @@
                         </div>
                         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                             <span class="plugin-tag ${group.enabled ? 'tag-valid' : 'tag-invalid'}">${group.enabled ? '已启用' : '已禁用'}</span>
+                            <span class="plugin-tag ${group.whitelisted ? 'tag-valid' : 'tag-invalid'}">${group.whitelisted ? '在白名单' : '未白名单'}</span>
                             <span class="plugin-tag ${group.stickerEnabled ? 'tag-valid' : 'tag-invalid'}">${group.stickerEnabled ? '表情包开' : '表情包关'}</span>
+                            <span class="plugin-tag ${group.scheduleEnabled ? 'tag-valid' : 'tag-invalid'}">${group.scheduleEnabled ? '作息开' : '作息关'}</span>
+                            <span class="plugin-tag ${group.ttsEnabled ? 'tag-valid' : 'tag-invalid'}">${group.ttsEnabled ? '语音开' : '语音关'}</span>
                         </div>
                     </summary>
                     <div class="p13n-detail-body">
@@ -1926,6 +2102,9 @@
                             <div>会话历史条数：${group.sessionHistoryLen}</div>
                             <div>今日调用：${group.todayCalls}</div>
                             <div>总调用：${group.totalCalls}</div>
+                        </div>
+                        <div class="p13n-actions" style="margin-bottom: 12px;">
+                            <button class="p13n-btn secondary" onclick="event.preventDefault(); event.stopPropagation(); openP13nGroupConfig('${group.id}')">编辑本群配置</button>
                         </div>
                         <div style="margin-bottom: 8px;">自定义 Prompt</div>
                         <div class="p13n-prompt">${escapeHtml(group.customPrompt || '未设置自定义 Prompt')}</div>
@@ -1939,7 +2118,7 @@
             document.getElementById('p13n-table-count').textContent = `共 ${groups.length} 个群`;
 
             if (!groups.length) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-secondary);">暂无拟人插件群数据</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-secondary);">暂无拟人插件群数据</td></tr>';
                 return;
             }
 
@@ -1951,7 +2130,13 @@
                     <td>${group.totalCalls}</td>
                     <td>${group.recentMessagesCount}</td>
                     <td>${group.sessionHistoryLen}</td>
-                    <td><span class="plugin-tag ${group.enabled ? 'tag-valid' : 'tag-invalid'}">${group.enabled ? '已启用' : '已禁用'}</span></td>
+                    <td>
+                        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                            <span class="plugin-tag ${group.enabled ? 'tag-valid' : 'tag-invalid'}">${group.enabled ? '已启用' : '已禁用'}</span>
+                            <span class="plugin-tag ${group.whitelisted ? 'tag-valid' : 'tag-invalid'}">${group.whitelisted ? '白名单' : '未白名单'}</span>
+                        </div>
+                    </td>
+                    <td><button class="p13n-btn secondary" onclick="openP13nGroupConfig('${group.id}')">编辑</button></td>
                 </tr>
             `).join('');
         }
@@ -2103,10 +2288,10 @@
                 if (!p13nStatus?.available) {
                     installTip.style.display = 'block';
                     mainSections.style.display = 'none';
-                    bannerText.textContent = p13nStatus?.error || '未检测到 nonebot-plugin-shiro-personification，请先安装该插件';
+                    bannerText.textContent = p13nStatus?.error || '未检测到 nonebot-plugin-shiro-personification 或 personification，请先加载其一';
                     badge.textContent = '不可用';
                     badge.className = 'p13n-badge unavailable';
-                    installTip.textContent = p13nStatus?.error || '未检测到 nonebot-plugin-shiro-personification，请先安装该插件';
+                    installTip.textContent = p13nStatus?.error || '未检测到 nonebot-plugin-shiro-personification 或 personification，请先加载其一';
                     if (p13nChart) {
                         p13nChart.destroy();
                         p13nChart = null;
@@ -2116,7 +2301,8 @@
 
                 installTip.style.display = 'none';
                 mainSections.style.display = 'block';
-                bannerText.textContent = '已检测到 nonebot-plugin-shiro-personification，当前面板展示只读状态与调用统计。';
+                const providerName = p13nStatus?.provider?.display_name || p13nStatus?.provider?.module_name || '拟人插件';
+                bannerText.textContent = `已检测到 ${providerName}，当前面板支持查看并修改运行时全局配置与群配置。`;
                 badge.textContent = '已启用';
                 badge.className = 'p13n-badge available';
 
@@ -2141,7 +2327,10 @@
                         sessionHistoryLen: Number(status.session_history_len || 0),
                         recentMessagesCount: Number(status.recent_messages_count || 0),
                         enabled: Boolean(status.enabled),
+                        whitelisted: Boolean(status.whitelisted),
                         stickerEnabled: Boolean(status.sticker_enabled),
+                        scheduleEnabled: Boolean(status.schedule_enabled),
+                        ttsEnabled: Boolean(status.tts_enabled),
                         customPrompt: status.custom_prompt || '',
                     };
                 }).sort((a, b) => {

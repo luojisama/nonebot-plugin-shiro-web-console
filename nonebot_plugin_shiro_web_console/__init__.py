@@ -7,16 +7,18 @@ import time
 import secrets
 import hashlib
 import re
+import importlib
 from datetime import datetime, timedelta
 from urllib.parse import quote, unquote
 from typing import Dict, List, Set, Optional, Any
 from pathlib import Path
 from collections import deque
+from dataclasses import dataclass
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Response, Depends, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
-from nonebot import get_app, get_bot, get_bots, get_driver, get_plugin_config, logger, on_message, on_command, require
+from nonebot import get_app, get_bot, get_bots, get_driver, get_plugin_config as nb_get_plugin_config, logger, on_message, on_command, require
 require("nonebot_plugin_localstore")
 import nonebot_plugin_localstore
 from .config import Config, config
@@ -24,44 +26,277 @@ from nonebot.permission import SUPERUSER
 from nonebot.adapters.onebot.v11 import Bot, MessageEvent, GroupMessageEvent, PrivateMessageEvent, MessageSegment, Message
 from nonebot.plugin import PluginMetadata
 
-# 拟人插件可选集成
-_personification_available = False
-_p13n_plugin_config = None
-_p13n_save_runtime_config = None
-_p13n_load_runtime_config = None
-_p13n_set_group_enabled = None
-_p13n_set_group_sticker_enabled = None
-_p13n_set_group_prompt = None
-try:
-    from nonebot_plugin_personification.config import Config as _P13NConfig
-    from nonebot_plugin_personification.core.data_store import get_data_store as _get_p13n_data_store
-    from nonebot_plugin_personification.core.session_store import chat_histories as _p13n_chat_histories
-    from nonebot_plugin_personification.utils import (
-        load_group_configs as _p13n_load_group_configs,
-        get_group_config as _p13n_get_group_config,
-        is_group_whitelisted as _p13n_is_group_whitelisted,
-        get_recent_group_msgs as _p13n_get_recent_group_msgs,
-        set_group_enabled as _p13n_set_group_enabled,
-        set_group_sticker_enabled as _p13n_set_group_sticker_enabled,
-        set_group_prompt as _p13n_set_group_prompt,
-    )
+@dataclass
+class PersonificationProvider:
+    variant: str
+    module_name: str
+    display_name: str
+    config_class: Any
+    plugin_config: Any
+    get_data_store: Any
+    chat_histories: Any
+    load_group_configs: Any
+    load_whitelist: Any
+    get_group_config: Any
+    is_group_whitelisted: Any
+    get_recent_group_msgs: Any
+    set_group_enabled: Any
+    set_group_sticker_enabled: Any
+    set_group_prompt: Any
+    set_group_schedule_enabled: Any
+    set_group_tts_enabled: Any
+    add_group_to_whitelist: Any
+    remove_group_from_whitelist: Any
+    load_runtime_config: Any
+    save_runtime_config: Any
+    get_runtime_config_path: Any
+    get_config_entries: Any
+    read_config_value: Any
+    describe_choices: Any
+    get_entry_label: Any
+
+
+_PERSONIFICATION_CANDIDATES = (
+    {
+        "variant": "shiro",
+        "module_name": "nonebot_plugin_personification",
+        "display_name": "nonebot-plugin-shiro-personification",
+    },
+    {
+        "variant": "local",
+        "module_name": "personification",
+        "display_name": "personification",
+    },
+)
+_p13n_provider_cache: Optional[PersonificationProvider] = None
+_p13n_provider_cache_key: Optional[str] = None
+
+_P13N_BOOL_TRUE = {"1", "true", "yes", "on", "开", "开启", "启用"}
+_P13N_BOOL_FALSE = {"0", "false", "no", "off", "关", "关闭", "禁用"}
+
+_P13N_RUNTIME_GLOBAL_ENTRIES = (
+    {
+        "key": "global_enabled",
+        "field_name": "personification_global_enabled",
+        "display_name": "全局拟人回复",
+        "value_type": "bool",
+        "default": True,
+        "description": "控制插件整体回复能力的总开关。",
+    },
+    {
+        "key": "tts_global_enabled",
+        "field_name": "personification_tts_global_enabled",
+        "display_name": "全局语音回复",
+        "value_type": "bool",
+        "default": True,
+        "description": "控制语音回复能力是否允许在任意群生效。",
+    },
+    {
+        "key": "web_search",
+        "field_name": "personification_web_search",
+        "display_name": "兼容联网总开关",
+        "value_type": "bool",
+        "default": True,
+        "description": "兼容旧配置的联网总开关。",
+    },
+    {
+        "key": "schedule_global",
+        "field_name": "personification_schedule_global",
+        "display_name": "全局作息模拟",
+        "value_type": "bool",
+        "default": False,
+        "description": "是否允许作息模拟在全局运行。",
+    },
+    {
+        "key": "proactive_enabled",
+        "field_name": "personification_proactive_enabled",
+        "display_name": "主动私聊",
+        "value_type": "bool",
+        "default": False,
+        "description": "是否允许主动私聊发起话题。",
+    },
+    {
+        "key": "group_idle_enabled",
+        "field_name": "personification_group_idle_enabled",
+        "display_name": "群空闲主动发话",
+        "value_type": "bool",
+        "default": False,
+        "description": "是否允许群聊长时间安静时主动发话。",
+    },
+    {
+        "key": "skill_remote_enabled",
+        "field_name": "personification_skill_remote_enabled",
+        "display_name": "远程技能加载",
+        "value_type": "bool",
+        "default": False,
+        "description": "允许使用远程 skill 源。",
+    },
+    {
+        "key": "skill_require_admin_review",
+        "field_name": "personification_skill_require_admin_review",
+        "display_name": "远程技能管理员审核",
+        "value_type": "bool",
+        "default": True,
+        "description": "远程技能是否必须管理员审核后才能启用。",
+    },
+    {
+        "key": "skill_allow_unsafe_external",
+        "field_name": "personification_skill_allow_unsafe_external",
+        "display_name": "允许不安全外部技能",
+        "value_type": "bool",
+        "default": False,
+        "description": "是否放宽对不安全外部 skill 的限制。",
+    },
+)
+
+_P13N_GROUP_EXTRA_ENTRIES = (
+    {
+        "key": "whitelisted",
+        "field_name": "whitelisted",
+        "display_name": "群白名单",
+        "value_type": "bool",
+        "default": False,
+        "description": "控制当前群是否在拟人化白名单内。",
+    },
+    {
+        "key": "custom_prompt",
+        "field_name": "custom_prompt",
+        "display_name": "自定义 Prompt",
+        "value_type": "str",
+        "default": "",
+        "description": "为单个群追加额外人设提示词。",
+    },
+)
+
+
+def _parse_p13n_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value or "").strip().lower()
+    if text in _P13N_BOOL_TRUE:
+        return True
+    if text in _P13N_BOOL_FALSE:
+        return False
+    raise ValueError("布尔值仅支持 true/false、on/off、开/关、1/0")
+
+
+def _normalize_p13n_value(value: Any, value_type: str, *, choices: Optional[List[str]] = None) -> Any:
+    if value_type == "bool":
+        return _parse_p13n_bool(value)
+    if value_type == "int":
+        return int(value)
+    if value_type == "float":
+        return float(value)
+    if value_type == "list":
+        if isinstance(value, list):
+            return value
+        text = str(value or "").strip()
+        if not text:
+            return []
+        return [item.strip() for item in text.split(",") if item.strip()]
+
+    normalized = "" if value is None else str(value)
+    if choices:
+        lowered = normalized.strip().lower()
+        matched = next((choice for choice in choices if str(choice).lower() == lowered), None)
+        if matched is None:
+            raise ValueError(f"可选值: {', '.join(choices)}")
+        return matched
+    return normalized
+
+
+def _detect_personification_module_name() -> Optional[str]:
     try:
-        from nonebot_plugin_personification.core.runtime_state import (
-            save_plugin_runtime_config as _p13n_save_runtime_config,
-            load_plugin_runtime_config as _p13n_load_runtime_config,
-        )
-    except ImportError:
-        from nonebot_plugin_personification.core import (
-            save_plugin_runtime_config as _p13n_save_runtime_config,
-            load_plugin_runtime_config as _p13n_load_runtime_config,
-        )
-    _p13n_plugin_config = get_plugin_config(_P13NConfig)
-    _personification_available = True
-    logger.info("拟人插件已检测到，Web 控制台将启用拟人集成功能。")
-except ImportError:
-    logger.info("未检测到拟人插件，Web 控制台拟人集成功能将不可用。")
-except Exception as e:
-    logger.error(f"拟人插件集成初始化失败，将降级为未启用状态: {e}")
+        from nonebot import get_loaded_plugins
+
+        loaded_modules = {
+            str(getattr(plugin, "module_name", getattr(plugin, "name", "")) or "")
+            for plugin in get_loaded_plugins()
+        }
+    except Exception as e:
+        logger.debug(f"读取已加载插件列表失败: {e}")
+        return None
+
+    for candidate in _PERSONIFICATION_CANDIDATES:
+        if candidate["module_name"] in loaded_modules:
+            return candidate["module_name"]
+    return None
+
+
+def _build_personification_provider(module_name: str) -> PersonificationProvider:
+    candidate = next(
+        item for item in _PERSONIFICATION_CANDIDATES if item["module_name"] == module_name
+    )
+    config_module = importlib.import_module(f"{module_name}.config")
+    data_store_module = importlib.import_module(f"{module_name}.core.data_store")
+    session_store_module = importlib.import_module(f"{module_name}.core.session_store")
+    utils_module = importlib.import_module(f"{module_name}.utils")
+    config_registry_module = importlib.import_module(f"{module_name}.core.config_registry")
+    runtime_module = importlib.import_module(f"{module_name}.core.runtime_config")
+
+    return PersonificationProvider(
+        variant=str(candidate["variant"]),
+        module_name=str(candidate["module_name"]),
+        display_name=str(candidate["display_name"]),
+        config_class=getattr(config_module, "Config"),
+        plugin_config=nb_get_plugin_config(getattr(config_module, "Config")),
+        get_data_store=getattr(data_store_module, "get_data_store"),
+        chat_histories=getattr(session_store_module, "chat_histories"),
+        load_group_configs=getattr(utils_module, "load_group_configs"),
+        load_whitelist=getattr(utils_module, "load_whitelist", lambda: []),
+        get_group_config=getattr(utils_module, "get_group_config"),
+        is_group_whitelisted=getattr(utils_module, "is_group_whitelisted"),
+        get_recent_group_msgs=getattr(utils_module, "get_recent_group_msgs"),
+        set_group_enabled=getattr(utils_module, "set_group_enabled", None),
+        set_group_sticker_enabled=getattr(utils_module, "set_group_sticker_enabled", None),
+        set_group_prompt=getattr(utils_module, "set_group_prompt", None),
+        set_group_schedule_enabled=getattr(utils_module, "set_group_schedule_enabled", None),
+        set_group_tts_enabled=getattr(utils_module, "set_group_tts_enabled", None),
+        add_group_to_whitelist=getattr(utils_module, "add_group_to_whitelist", None),
+        remove_group_from_whitelist=getattr(utils_module, "remove_group_from_whitelist", None),
+        load_runtime_config=getattr(runtime_module, "load_plugin_runtime_config", None),
+        save_runtime_config=getattr(runtime_module, "save_plugin_runtime_config", None),
+        get_runtime_config_path=getattr(runtime_module, "get_runtime_config_path", None),
+        get_config_entries=getattr(config_registry_module, "get_config_entries"),
+        read_config_value=getattr(config_registry_module, "read_config_value"),
+        describe_choices=getattr(config_registry_module, "describe_choices"),
+        get_entry_label=getattr(config_registry_module, "get_entry_label"),
+    )
+
+
+def _get_personification_provider(force_refresh: bool = False) -> Optional[PersonificationProvider]:
+    global _p13n_provider_cache
+    global _p13n_provider_cache_key
+
+    module_name = _detect_personification_module_name()
+    if not module_name:
+        _p13n_provider_cache = None
+        _p13n_provider_cache_key = None
+        return None
+
+    if (
+        not force_refresh
+        and _p13n_provider_cache is not None
+        and _p13n_provider_cache_key == module_name
+    ):
+        return _p13n_provider_cache
+
+    try:
+        provider = _build_personification_provider(module_name)
+    except Exception as e:
+        logger.error(f"拟人插件集成初始化失败，将降级为未启用状态: {e}")
+        _p13n_provider_cache = None
+        _p13n_provider_cache_key = None
+        return None
+
+    _p13n_provider_cache = provider
+    _p13n_provider_cache_key = module_name
+    logger.info(
+        f"拟人插件已检测到，Web 控制台将启用拟人集成功能: {provider.display_name} ({provider.module_name})"
+    )
+    return provider
 
 START_TIME = time.time()
 
@@ -75,7 +310,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "author": "luojisama",
-        "version": "0.1.24",
+        "version": "0.2.0",
         "pypi_test": "nonebot-plugin-shiro-web-console",
     },
 )
@@ -157,7 +392,8 @@ def report_personification_call(group_id: str):
 
 
 def _is_personification_stack() -> bool:
-    if not _personification_available:
+    provider = _get_personification_provider()
+    if provider is None:
         return False
 
     import sys
@@ -167,7 +403,7 @@ def _is_personification_stack() -> bool:
         frame = sys._getframe(1)
         while frame:
             module_name = str(frame.f_globals.get("__name__", "") or "")
-            if module_name.startswith("nonebot_plugin_personification"):
+            if module_name.startswith(provider.module_name):
                 return True
             frame = frame.f_back
     except Exception as e:
@@ -177,88 +413,223 @@ def _is_personification_stack() -> bool:
     return False
 
 
-def _clone_p13n_plugin_config():
-    if _p13n_plugin_config is None:
+def _clone_p13n_plugin_config(provider: Optional[PersonificationProvider]):
+    if provider is None or provider.plugin_config is None:
         return None
-    if hasattr(_p13n_plugin_config, "model_copy"):
-        return _p13n_plugin_config.model_copy(deep=True)
-    if hasattr(_p13n_plugin_config, "copy"):
-        return _p13n_plugin_config.copy(deep=True)
-    return _p13n_plugin_config
+    if hasattr(provider.plugin_config, "model_copy"):
+        return provider.plugin_config.model_copy(deep=True)
+    if hasattr(provider.plugin_config, "copy"):
+        return provider.plugin_config.copy(deep=True)
+    return provider.plugin_config
 
 
-def _load_p13n_group_configs_safe() -> Dict[str, dict]:
-    if not _personification_available:
+def _get_p13n_runtime_path(provider: PersonificationProvider, plugin_config: Any) -> Optional[Path]:
+    runtime_path_getter = getattr(provider, "get_runtime_config_path", None)
+    if runtime_path_getter is None:
+        return None
+    try:
+        runtime_path = runtime_path_getter(plugin_config)
+        return runtime_path if isinstance(runtime_path, Path) else Path(runtime_path)
+    except Exception as e:
+        logger.error(f"读取拟人插件运行时配置路径失败: {e}")
+        return None
+
+
+def _load_p13n_group_configs_safe(provider: Optional[PersonificationProvider]) -> Dict[str, dict]:
+    if provider is None:
         return {}
 
     try:
-        configs = _p13n_load_group_configs()
+        configs = provider.load_group_configs()
         if isinstance(configs, dict):
             return configs
     except Exception as e:
         logger.error(f"读取拟人插件群配置失败，将尝试数据存储兜底: {e}")
 
     try:
-        data = _get_p13n_data_store().load_sync("group_config")
+        data = provider.get_data_store().load_sync("group_config")
         return data if isinstance(data, dict) else {}
     except Exception as e:
         logger.error(f"读取拟人插件数据存储失败: {e}")
         return {}
 
 
-def _load_p13n_runtime_flags() -> Dict[str, bool]:
-    runtime_flags = {
-        "web_search": True,
-        "schedule_global": False,
-        "proactive_enabled": False,
+def _load_p13n_effective_plugin_config(provider: Optional[PersonificationProvider]) -> Any:
+    runtime_config = _clone_p13n_plugin_config(provider)
+    if runtime_config is None or provider is None:
+        return runtime_config
+
+    if provider.load_runtime_config is None:
+        return runtime_config
+
+    runtime_path = _get_p13n_runtime_path(provider, runtime_config)
+    try:
+        if runtime_path is not None:
+            provider.load_runtime_config(runtime_config, logger, path=runtime_path)
+        else:
+            provider.load_runtime_config(runtime_config, logger)
+    except TypeError:
+        try:
+            provider.load_runtime_config(runtime_config, logger)
+        except Exception as e:
+            logger.error(f"加载拟人插件运行时配置失败: {e}")
+    except Exception as e:
+        logger.error(f"加载拟人插件运行时配置失败: {e}")
+    return runtime_config
+
+
+def _load_p13n_global_state(provider: Optional[PersonificationProvider]) -> Dict[str, Any]:
+    if provider is None:
+        return {}
+
+    effective_config = _load_p13n_effective_plugin_config(provider)
+    if effective_config is None:
+        return {}
+
+    state: Dict[str, Any] = {}
+    for entry in _P13N_RUNTIME_GLOBAL_ENTRIES:
+        state[entry["key"]] = getattr(
+            effective_config,
+            entry["field_name"],
+            entry["default"],
+        )
+    for entry in provider.get_config_entries("global"):
+        state[entry.key] = provider.read_config_value(entry, plugin_config=effective_config)
+    return state
+
+
+def _serialize_p13n_entry(
+    provider: Optional[PersonificationProvider],
+    entry: Any,
+    value: Any,
+) -> Dict[str, Any]:
+    if isinstance(entry, dict):
+        choices = list(entry.get("choices", []) or [])
+        return {
+            "key": str(entry["key"]),
+            "field_name": str(entry.get("field_name") or entry["key"]),
+            "label": str(entry.get("display_name") or entry["key"]),
+            "description": str(entry.get("description") or ""),
+            "value_type": str(entry.get("value_type") or "str"),
+            "default": entry.get("default"),
+            "value": value,
+            "choices": choices,
+            "choices_text": " / ".join(choices) if choices else "",
+        }
+
+    choices = list(getattr(entry, "choices", ()) or ())
+    return {
+        "key": str(entry.key),
+        "field_name": str(entry.field_name),
+        "label": str(provider.get_entry_label(entry) if provider is not None else entry.key),
+        "description": str(getattr(entry, "description", "") or ""),
+        "value_type": str(getattr(entry, "value_type", "str") or "str"),
+        "default": getattr(entry, "default", None),
+        "value": value,
+        "choices": choices,
+        "choices_text": str(provider.describe_choices(entry) if provider is not None else ""),
     }
-    if _p13n_plugin_config is not None:
-        runtime_flags.update(
-            {
-                "web_search": bool(getattr(_p13n_plugin_config, "personification_web_search", True)),
-                "schedule_global": bool(getattr(_p13n_plugin_config, "personification_schedule_global", False)),
-                "proactive_enabled": bool(getattr(_p13n_plugin_config, "personification_proactive_enabled", False)),
-            }
+
+
+def _build_p13n_global_entries(provider: Optional[PersonificationProvider]) -> List[Dict[str, Any]]:
+    if provider is None:
+        return []
+
+    effective_config = _load_p13n_effective_plugin_config(provider)
+    if effective_config is None:
+        return []
+
+    entries: List[Dict[str, Any]] = []
+    for entry in _P13N_RUNTIME_GLOBAL_ENTRIES:
+        entries.append(
+            _serialize_p13n_entry(
+                provider,
+                entry,
+                getattr(effective_config, entry["field_name"], entry["default"]),
+            )
+        )
+    for entry in provider.get_config_entries("global"):
+        entries.append(
+            _serialize_p13n_entry(
+                provider,
+                entry,
+                provider.read_config_value(entry, plugin_config=effective_config),
+            )
+        )
+    return entries
+
+
+def _build_p13n_group_entries(
+    provider: Optional[PersonificationProvider],
+    group_id: str,
+) -> List[Dict[str, Any]]:
+    if provider is None:
+        return []
+
+    normalized_group_id = str(group_id).replace("group_", "", 1)
+    group_config = provider.get_group_config(normalized_group_id)
+    if not isinstance(group_config, dict):
+        group_config = {}
+    config_whitelist = list(getattr(provider.plugin_config, "personification_whitelist", []) or [])
+    runtime_whitelist = provider.load_whitelist()
+    if not isinstance(runtime_whitelist, list):
+        runtime_whitelist = []
+
+    entries: List[Dict[str, Any]] = []
+    for entry in provider.get_config_entries("group"):
+        entries.append(
+            _serialize_p13n_entry(
+                provider,
+                entry,
+                provider.read_config_value(
+                    entry,
+                    plugin_config=provider.plugin_config,
+                    group_config=group_config,
+                ),
+            )
+        )
+    for entry in _P13N_GROUP_EXTRA_ENTRIES:
+        if entry["key"] == "whitelisted":
+            value = normalized_group_id in config_whitelist or normalized_group_id in runtime_whitelist
+        else:
+            value = group_config.get(entry["field_name"], entry["default"])
+        entries.append(_serialize_p13n_entry(provider, entry, value))
+    return entries
+
+
+def _write_p13n_runtime_config(provider: PersonificationProvider, runtime_config: Any) -> None:
+    runtime_path = _get_p13n_runtime_path(provider, runtime_config)
+    if provider.save_runtime_config is None:
+        raise RuntimeError("拟人插件未导出运行时配置保存函数")
+    if runtime_path is not None:
+        provider.save_runtime_config(runtime_config, logger, path=runtime_path)
+    else:
+        provider.save_runtime_config(runtime_config, logger)
+    for entry in _P13N_RUNTIME_GLOBAL_ENTRIES:
+        setattr(
+            provider.plugin_config,
+            entry["field_name"],
+            getattr(runtime_config, entry["field_name"], entry["default"]),
+        )
+    for entry in provider.get_config_entries("global"):
+        setattr(
+            provider.plugin_config,
+            entry.field_name,
+            getattr(runtime_config, entry.field_name, entry.default),
         )
 
-    runtime_config = _clone_p13n_plugin_config()
-    if runtime_config is not None and _p13n_load_runtime_config is not None:
-        try:
-            _p13n_load_runtime_config(runtime_config, logger)
-            runtime_flags.update(
-                {
-                    "web_search": bool(getattr(runtime_config, "personification_web_search", runtime_flags["web_search"])),
-                    "schedule_global": bool(getattr(runtime_config, "personification_schedule_global", runtime_flags["schedule_global"])),
-                    "proactive_enabled": bool(getattr(runtime_config, "personification_proactive_enabled", runtime_flags["proactive_enabled"])),
-                }
-            )
-            return runtime_flags
-        except Exception as e:
-            logger.error(f"加载拟人插件运行时配置失败，将尝试直接读取文件: {e}")
 
-    runtime_path = Path("data/user_persona/runtime_config.json")
-    if runtime_path.exists():
-        try:
-            raw = json.loads(runtime_path.read_text(encoding="utf-8"))
-            runtime_flags.update(
-                {
-                    "web_search": bool(raw.get("web_search", runtime_flags["web_search"])),
-                    "schedule_global": bool(raw.get("schedule_global", runtime_flags["schedule_global"])),
-                    "proactive_enabled": bool(raw.get("proactive_enabled", runtime_flags["proactive_enabled"])),
-                }
-            )
-        except Exception as e:
-            logger.error(f"直接读取拟人插件运行时配置文件失败: {e}")
-    return runtime_flags
-
-
-def _collect_p13n_group_ids(group_configs: Dict[str, dict]) -> List[str]:
+def _collect_p13n_group_ids(
+    provider: Optional[PersonificationProvider],
+    group_configs: Dict[str, dict],
+) -> List[str]:
     group_ids: Set[str] = set()
     for raw_group_id in group_configs.keys():
         group_ids.add(str(raw_group_id).replace("group_", "", 1))
-    for session_id in _p13n_chat_histories.keys() if _personification_available else []:
-        if isinstance(session_id, str) and session_id.startswith("group_"):
-            group_ids.add(session_id.replace("group_", "", 1))
+    if provider is not None:
+        for session_id in provider.chat_histories.keys():
+            if isinstance(session_id, str) and session_id.startswith("group_"):
+                group_ids.add(session_id.replace("group_", "", 1))
     for stat_key in _group_call_stats.keys():
         if stat_key.startswith("group_"):
             group_ids.add(stat_key.replace("group_", "", 1))
@@ -604,7 +975,7 @@ async def on_api_called(bot: Bot, exception: Optional[Exception], api: str, data
             # 获取 content 字符串表示
             content_str = str(message) if not isinstance(message, list) else "[Message]"
             if (
-                _personification_available
+                _get_personification_provider() is not None
                 and chat_id.startswith("group_")
                 and result is not None
                 and str(content_str).strip()
@@ -1407,30 +1778,40 @@ if app:
 
     @app.get("/web_console/api/personification/status", dependencies=[Depends(check_auth)])
     async def get_personification_status():
-        if not _personification_available:
-            return {"available": False}
+        provider = _get_personification_provider()
+        if provider is None:
+            return {
+                "available": False,
+                "error": "未检测到已加载的 nonebot-plugin-shiro-personification 或 personification",
+            }
 
         try:
-            runtime_flags = _load_p13n_runtime_flags()
-            group_configs = _load_p13n_group_configs_safe()
-            whitelist = list(getattr(_p13n_plugin_config, "personification_whitelist", []) or [])
+            global_state = _load_p13n_global_state(provider)
+            group_configs = _load_p13n_group_configs_safe(provider)
+            config_whitelist = list(getattr(provider.plugin_config, "personification_whitelist", []) or [])
+            runtime_whitelist = provider.load_whitelist()
+            if not isinstance(runtime_whitelist, list):
+                runtime_whitelist = []
             groups: Dict[str, Dict[str, Any]] = {}
 
-            for group_id in _collect_p13n_group_ids(group_configs):
+            for group_id in _collect_p13n_group_ids(provider, group_configs):
                 group_key = f"group_{group_id}"
                 try:
-                    group_config = _p13n_get_group_config(group_id)
+                    group_config = provider.get_group_config(group_id)
                     if not isinstance(group_config, dict):
                         group_config = {}
-                    whitelisted = bool(_p13n_is_group_whitelisted(group_id, whitelist))
-                    session_history = _p13n_chat_histories.get(group_key, [])
-                    recent_messages = _p13n_get_recent_group_msgs(group_id)
+                    whitelisted = group_id in config_whitelist or group_id in runtime_whitelist
+                    enabled = bool(group_config.get("enabled")) if "enabled" in group_config else whitelisted
+                    session_history = provider.chat_histories.get(group_key, [])
+                    recent_messages = provider.get_recent_group_msgs(group_id)
                     groups[group_key] = {
-                        "enabled": bool(group_config.get("enabled")) if "enabled" in group_config else whitelisted,
+                        "enabled": enabled,
                         "whitelisted": whitelisted,
                         "sticker_enabled": bool(group_config.get("sticker_enabled", True)),
-                        "proactive_enabled": bool(runtime_flags.get("proactive_enabled", False)),
-                        "custom_prompt": group_config.get("custom_prompt"),
+                        "schedule_enabled": bool(group_config.get("schedule_enabled", False)),
+                        "tts_enabled": bool(group_config.get("tts_enabled", True)),
+                        "proactive_enabled": bool(global_state.get("proactive_enabled", False)),
+                        "custom_prompt": group_config.get("custom_prompt") or "",
                         "session_history_len": len(session_history) if isinstance(session_history, list) else 0,
                         "recent_messages_count": len(recent_messages) if isinstance(recent_messages, list) else 0,
                     }
@@ -1440,8 +1821,10 @@ if app:
                         "enabled": False,
                         "whitelisted": False,
                         "sticker_enabled": False,
-                        "proactive_enabled": bool(runtime_flags.get("proactive_enabled", False)),
-                        "custom_prompt": None,
+                        "schedule_enabled": False,
+                        "tts_enabled": False,
+                        "proactive_enabled": bool(global_state.get("proactive_enabled", False)),
+                        "custom_prompt": "",
                         "session_history_len": 0,
                         "recent_messages_count": 0,
                         "error": str(e),
@@ -1449,16 +1832,100 @@ if app:
 
             return {
                 "available": True,
+                "provider": {
+                    "variant": provider.variant,
+                    "module_name": provider.module_name,
+                    "display_name": provider.display_name,
+                },
                 "groups": groups,
-                "global": runtime_flags,
+                "global": global_state,
             }
         except Exception as e:
             logger.error(f"获取拟人插件状态失败: {e}")
             return {"available": False, "error": str(e)}
 
+    @app.get("/web_console/api/personification/config", dependencies=[Depends(check_auth)])
+    async def get_personification_config():
+        provider = _get_personification_provider()
+        if provider is None:
+            return {
+                "available": False,
+                "error": "未检测到已加载的 nonebot-plugin-shiro-personification 或 personification",
+            }
+
+        try:
+            return {
+                "available": True,
+                "provider": {
+                    "variant": provider.variant,
+                    "module_name": provider.module_name,
+                    "display_name": provider.display_name,
+                },
+                "entries": _build_p13n_global_entries(provider),
+            }
+        except Exception as e:
+            logger.error(f"读取拟人插件全局配置失败: {e}")
+            return {"available": False, "error": str(e)}
+
+    @app.post("/web_console/api/personification/config", dependencies=[Depends(check_auth)])
+    async def update_personification_config(data: dict):
+        provider = _get_personification_provider()
+        if provider is None:
+            return {
+                "available": False,
+                "error": "未检测到已加载的 nonebot-plugin-shiro-personification 或 personification",
+            }
+
+        runtime_config = _load_p13n_effective_plugin_config(provider)
+        if runtime_config is None:
+            return {"available": False, "error": "无法读取拟人插件运行时配置"}
+
+        runtime_entry_map = {entry["key"]: entry for entry in _P13N_RUNTIME_GLOBAL_ENTRIES}
+        registry_entry_map = {entry.key: entry for entry in provider.get_config_entries("global")}
+
+        try:
+            for key, raw_value in (data or {}).items():
+                if key in runtime_entry_map:
+                    entry = runtime_entry_map[key]
+                    normalized_value = _normalize_p13n_value(
+                        raw_value,
+                        str(entry.get("value_type") or "str"),
+                        choices=list(entry.get("choices", []) or []),
+                    )
+                    setattr(runtime_config, entry["field_name"], normalized_value)
+                    continue
+                if key in registry_entry_map:
+                    entry = registry_entry_map[key]
+                    normalized_value = (
+                        entry.normalize_value(raw_value)
+                        if hasattr(entry, "normalize_value")
+                        else _normalize_p13n_value(
+                            raw_value,
+                            str(getattr(entry, "value_type", "str") or "str"),
+                            choices=list(getattr(entry, "choices", ()) or ()),
+                        )
+                    )
+                    setattr(runtime_config, entry.field_name, normalized_value)
+                    continue
+                raise ValueError(f"不支持的拟人全局配置项: {key}")
+
+            _write_p13n_runtime_config(provider, runtime_config)
+            return {
+                "available": True,
+                "provider": {
+                    "variant": provider.variant,
+                    "module_name": provider.module_name,
+                    "display_name": provider.display_name,
+                },
+                "entries": _build_p13n_global_entries(provider),
+            }
+        except Exception as e:
+            logger.error(f"更新拟人插件全局配置失败: {e}")
+            return {"available": False, "error": str(e)}
+
     @app.get("/web_console/api/personification/stats", dependencies=[Depends(check_auth)])
     async def get_personification_stats():
-        if not _personification_available:
+        if _get_personification_provider() is None:
             return {"available": False, "groups": {}}
 
         try:
@@ -1476,29 +1943,88 @@ if app:
             logger.error(f"获取拟人插件调用统计失败: {e}")
             return {"available": False, "groups": {}, "error": str(e)}
 
+    @app.get("/web_console/api/personification/group/{group_id}/config", dependencies=[Depends(check_auth)])
+    async def get_personification_group_config(group_id: str):
+        provider = _get_personification_provider()
+        if provider is None:
+            return {
+                "available": False,
+                "error": "未检测到已加载的 nonebot-plugin-shiro-personification 或 personification",
+            }
+
+        normalized_group_id = str(group_id).replace("group_", "", 1)
+        try:
+            return {
+                "available": True,
+                "provider": {
+                    "variant": provider.variant,
+                    "module_name": provider.module_name,
+                    "display_name": provider.display_name,
+                },
+                "group_id": f"group_{normalized_group_id}",
+                "entries": _build_p13n_group_entries(provider, normalized_group_id),
+            }
+        except Exception as e:
+            logger.error(f"读取拟人插件群配置失败: {e}")
+            return {"available": False, "error": str(e)}
+
     @app.post("/web_console/api/personification/group/{group_id}/config", dependencies=[Depends(check_auth)])
     async def update_personification_group_config(group_id: str, data: dict):
-        if not _personification_available:
-            return {"available": False, "error": "未检测到 nonebot-plugin-shiro-personification"}
+        provider = _get_personification_provider()
+        if provider is None:
+            return {
+                "available": False,
+                "error": "未检测到已加载的 nonebot-plugin-shiro-personification 或 personification",
+            }
 
         normalized_group_id = str(group_id).replace("group_", "", 1)
 
         try:
-            if "enabled" in data and _p13n_set_group_enabled is not None:
-                _p13n_set_group_enabled(normalized_group_id, bool(data.get("enabled")))
-            if "sticker_enabled" in data and _p13n_set_group_sticker_enabled is not None:
-                _p13n_set_group_sticker_enabled(normalized_group_id, bool(data.get("sticker_enabled")))
-            if "custom_prompt" in data and _p13n_set_group_prompt is not None:
-                custom_prompt = data.get("custom_prompt")
-                _p13n_set_group_prompt(
-                    normalized_group_id,
-                    None if custom_prompt in [None, ""] else str(custom_prompt),
-                )
+            for key, raw_value in (data or {}).items():
+                if key == "enabled":
+                    if provider.set_group_enabled is None:
+                        raise ValueError("当前拟人插件未提供群开关设置接口")
+                    provider.set_group_enabled(normalized_group_id, _parse_p13n_bool(raw_value))
+                    continue
+                if key == "sticker_enabled":
+                    if provider.set_group_sticker_enabled is None:
+                        raise ValueError("当前拟人插件未提供表情包设置接口")
+                    provider.set_group_sticker_enabled(normalized_group_id, _parse_p13n_bool(raw_value))
+                    continue
+                if key == "schedule_enabled":
+                    if provider.set_group_schedule_enabled is None:
+                        raise ValueError("当前拟人插件未提供作息模拟设置接口")
+                    provider.set_group_schedule_enabled(normalized_group_id, _parse_p13n_bool(raw_value))
+                    continue
+                if key == "tts_enabled":
+                    if provider.set_group_tts_enabled is None:
+                        raise ValueError("当前拟人插件未提供语音设置接口")
+                    provider.set_group_tts_enabled(normalized_group_id, _parse_p13n_bool(raw_value))
+                    continue
+                if key == "custom_prompt":
+                    if provider.set_group_prompt is None:
+                        raise ValueError("当前拟人插件未提供自定义 Prompt 设置接口")
+                    custom_prompt = None if raw_value in [None, ""] else str(raw_value)
+                    provider.set_group_prompt(normalized_group_id, custom_prompt)
+                    continue
+                if key == "whitelisted":
+                    whitelist_enabled = _parse_p13n_bool(raw_value)
+                    if whitelist_enabled:
+                        if provider.add_group_to_whitelist is None:
+                            raise ValueError("当前拟人插件未提供白名单写入接口")
+                        provider.add_group_to_whitelist(normalized_group_id)
+                    else:
+                        if provider.remove_group_from_whitelist is None:
+                            raise ValueError("当前拟人插件未提供白名单写入接口")
+                        provider.remove_group_from_whitelist(normalized_group_id)
+                    continue
+                raise ValueError(f"不支持的拟人群配置项: {key}")
 
             return {
                 "available": True,
                 "group_id": f"group_{normalized_group_id}",
-                "config": _p13n_get_group_config(normalized_group_id),
+                "config": provider.get_group_config(normalized_group_id),
+                "entries": _build_p13n_group_entries(provider, normalized_group_id),
             }
         except Exception as e:
             logger.error(f"更新拟人插件群配置失败: {e}")
