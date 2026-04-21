@@ -26,9 +26,15 @@ pip install nonebot-plugin-shiro-web-console
 
 ```env
 web_console_password=your_password  # 设置固定登录密码
+web_console_log_retention_minutes=60  # Web 控制台日志缓存保留时长（分钟）
+web_console_log_cleanup_interval_seconds=60  # 过期日志自动清理间隔（秒）
 ```
 
 ## 更新日志
+
+### v0.2.1
+- **修复**：为 Web 控制台日志缓存增加过期日志自动清理，避免低日志量场景下旧缓存长期残留。
+- **新增**：支持通过 `web_console_log_retention_minutes` 与 `web_console_log_cleanup_interval_seconds` 配置日志缓存保留时长和清理周期。
 
 ### v0.2.0
 - **新增**：为 `nonebot-plugin-shiro-personification` 与本地 `personification` 提供统一的 Web Console 联动兼容层。

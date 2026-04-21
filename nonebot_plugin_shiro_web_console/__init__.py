@@ -310,7 +310,7 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "author": "luojisama",
-        "version": "0.2.0",
+        "version": "0.2.1",
         "pypi_test": "nonebot-plugin-shiro-web-console",
     },
 )
@@ -334,19 +334,45 @@ async def broadcast_message(data: dict):
 
 # 日志缓冲区，保留最近 200 条日志
 log_buffer = deque(maxlen=200)
+LOG_RETENTION = timedelta(minutes=max(config.web_console_log_retention_minutes, 1))
+LOG_CLEANUP_INTERVAL_SECONDS = max(config.web_console_log_cleanup_interval_seconds, 10)
+
+
+def _cleanup_expired_log_entries(now: Optional[datetime] = None) -> None:
+    now = now or datetime.now()
+    while log_buffer and log_buffer[0]["expires_at"] <= now:
+        log_buffer.popleft()
+
+
+def _serialize_log_entry(log_entry: Dict[str, Any]) -> Dict[str, str]:
+    return {
+        "time": log_entry["time"],
+        "level": log_entry["level"],
+        "message": log_entry["message"],
+        "module": log_entry["module"],
+    }
+
+
+async def _log_buffer_cleanup_loop() -> None:
+    while True:
+        await asyncio.sleep(LOG_CLEANUP_INTERVAL_SECONDS)
+        _cleanup_expired_log_entries()
 
 async def log_sink(message):
+    now = datetime.now()
+    _cleanup_expired_log_entries(now)
     log_entry = {
-        "time": datetime.now().strftime("%H:%M:%S"),
+        "time": now.strftime("%H:%M:%S"),
         "level": message.record["level"].name,
         "message": message.record["message"],
-        "module": message.record["module"]
+        "module": message.record["module"],
+        "expires_at": now + LOG_RETENTION,
     }
     log_buffer.append(log_entry)
     # 推送日志
     await broadcast_message({
         "type": "new_log",
-        "data": log_entry
+        "data": _serialize_log_entry(log_entry)
     })
 
 # 注册 loguru sink
@@ -713,6 +739,24 @@ auth_manager = AuthManager()
 # 获取管理员列表
 driver = get_driver()
 superusers = driver.config.superusers
+
+
+@driver.on_startup
+async def _startup_log_cleanup() -> None:
+    task = getattr(driver, "_web_console_log_cleanup_task", None)
+    if task is None or task.done():
+        setattr(driver, "_web_console_log_cleanup_task", asyncio.create_task(_log_buffer_cleanup_loop()))
+
+
+@driver.on_shutdown
+async def _shutdown_log_cleanup() -> None:
+    task = getattr(driver, "_web_console_log_cleanup_task", None)
+    if task and not task.done():
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 async def check_auth(request: Request):
     # 优先从 Header 获取，其次从 Query Params 获取（用于 <img> 标签）
@@ -1172,7 +1216,8 @@ if app:
 
     @app.get("/web_console/api/logs", dependencies=[Depends(check_auth)])
     async def get_logs():
-        return list(log_buffer)
+        _cleanup_expired_log_entries()
+        return [_serialize_log_entry(log_entry) for log_entry in log_buffer]
 
     @app.get("/web_console/api/logs/download", dependencies=[Depends(check_auth)])
     async def download_logs():
