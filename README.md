@@ -32,6 +32,11 @@ web_console_log_cleanup_interval_seconds=60  # 过期日志自动清理间隔（
 
 ## 更新日志
 
+### v0.2.2
+- **新增**：改为通过拟人插件导出的 `web_console_api` 稳定接口读取在线版 `nonebot-plugin-shiro-personification` 与本地版 `personification`。
+- **优化**：双版本同时存在时按“在线版优先，本地版回退”自动选择活动 provider，并在接口响应中返回 `detected_providers` 供前端展示。
+- **修复**：拟人插件联动不再依赖内部模块结构，避免发布版与本地版架构差异导致控制台页面失效。
+
 ### v0.2.1
 - **修复**：为 Web 控制台日志缓存增加过期日志自动清理，避免低日志量场景下旧缓存长期残留。
 - **新增**：支持通过 `web_console_log_retention_minutes` 与 `web_console_log_cleanup_interval_seconds` 配置日志缓存保留时长和清理周期。
