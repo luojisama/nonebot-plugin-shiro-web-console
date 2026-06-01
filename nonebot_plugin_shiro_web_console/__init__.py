@@ -338,21 +338,27 @@ def _is_personification_stack() -> bool:
         del frame
     return False
 
-# 验证码管理
+# 验证码与登录令牌管理（持久化多令牌 + 免密登录 + 登录限流）
 class AuthManager:
+    MAX_TOKENS = 50  # 持久化令牌上限，避免文件无限增长
+
     def __init__(self):
         self.code: Optional[str] = None
         self.expire_time: Optional[datetime] = None
-        self.token: Optional[str] = None
-        self.token_expire: Optional[datetime] = None
-        
-        # 密码持久化文件路径
+
+        # 密码与令牌持久化文件路径
         self.data_dir = nonebot_plugin_localstore.get_plugin_data_dir()
         self.password_file = self.data_dir / "password.json"
-        
-        # 初始加载密码
-        self.admin_password_hash = self._load_password_hash()
+        self.token_file = self.data_dir / "tokens.json"
 
+        # 初始加载密码与令牌
+        self.admin_password_hash = self._load_password_hash()
+        self.tokens: Dict[str, Dict[str, str]] = self._load_tokens()
+
+        # 登录失败限流（内存，重启清零）
+        self._login_fails: List[datetime] = []
+
+    # ---- 密码 ----
     def _load_password_hash(self) -> str:
         pwd = "admin123"
         if self.password_file.exists():
@@ -361,11 +367,11 @@ class AuthManager:
                 if "password_hash" in data:
                     return data["password_hash"]
                 pwd = data.get("password", "admin123")
-            except:
+            except Exception:
                 pass
         else:
             pwd = config.web_console_password
-        
+
         # 迁移或初始化：将明文转换为哈希
         return hashlib.sha256(pwd.encode()).hexdigest()
 
@@ -373,9 +379,50 @@ class AuthManager:
         pwd_hash = hashlib.sha256(new_password.encode()).hexdigest()
         self.admin_password_hash = pwd_hash
         self.password_file.write_text(json.dumps({"password_hash": pwd_hash}), encoding="utf-8")
-        # 修改密码后使旧 token 失效
-        self.token = None
+        # 修改密码后吊销全部登录令牌
+        self.tokens = {}
+        self._save_tokens()
 
+    # ---- 令牌持久化 ----
+    def _load_tokens(self) -> Dict[str, Dict[str, str]]:
+        if not self.token_file.exists():
+            return {}
+        try:
+            raw = json.loads(self.token_file.read_text(encoding="utf-8"))
+        except Exception as e:
+            logger.warning(f"加载登录令牌失败，将重置：{e}")
+            return {}
+        now = datetime.now()
+        valid: Dict[str, Dict[str, str]] = {}
+        for token, meta in (raw or {}).items():
+            try:
+                if datetime.fromisoformat(meta["expires_at"]) > now:
+                    valid[token] = meta
+            except Exception:
+                continue
+        return valid
+
+    def _save_tokens(self):
+        try:
+            self.token_file.write_text(json.dumps(self.tokens), encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"持久化登录令牌失败：{e}")
+
+    def _prune_tokens(self):
+        now = datetime.now()
+        for token in [t for t, m in self.tokens.items()
+                      if datetime.fromisoformat(m["expires_at"]) <= now]:
+            self.tokens.pop(token, None)
+        # 超出上限时保留最新创建的若干个
+        if len(self.tokens) > self.MAX_TOKENS:
+            ordered = sorted(
+                self.tokens.items(),
+                key=lambda kv: kv[1].get("created_at", ""),
+                reverse=True,
+            )
+            self.tokens = dict(ordered[: self.MAX_TOKENS])
+
+    # ---- 验证码 ----
     def generate_code(self) -> str:
         self.code = "".join([str(random.randint(0, 9)) for _ in range(6)])
         self.expire_time = datetime.now() + timedelta(minutes=5)
@@ -389,27 +436,58 @@ class AuthManager:
             return False
         if self.code == code:
             self.code = None  # 验证码一次性
-            self.generate_token()
             return True
         return False
 
     def verify_password(self, password: str) -> bool:
         input_hash = hashlib.sha256(password.encode()).hexdigest()
-        if input_hash == self.admin_password_hash:
-            self.generate_token()
-            return True
-        return False
+        return secrets.compare_digest(input_hash, self.admin_password_hash)
 
-    def generate_token(self):
-        self.token = secrets.token_hex(16)
-        self.token_expire = datetime.now() + timedelta(days=7)
+    # ---- 令牌签发 / 校验 / 吊销 ----
+    def generate_token(self, remember: bool = False) -> str:
+        token = secrets.token_hex(32)
+        days = config.web_console_remember_days if remember else config.web_console_session_days
+        now = datetime.now()
+        self.tokens[token] = {
+            "expires_at": (now + timedelta(days=max(days, 1))).isoformat(),
+            "created_at": now.isoformat(),
+            "remember": "1" if remember else "0",
+        }
+        self._prune_tokens()
+        self._save_tokens()
+        return token
 
     def verify_token(self, token: str) -> bool:
-        if not self.token or not self.token_expire:
+        meta = self.tokens.get(token)
+        if not meta:
             return False
-        if datetime.now() > self.token_expire:
+        try:
+            if datetime.now() > datetime.fromisoformat(meta["expires_at"]):
+                self.tokens.pop(token, None)
+                self._save_tokens()
+                return False
+        except Exception:
+            self.tokens.pop(token, None)
             return False
-        return self.token == token
+        return True
+
+    def revoke_token(self, token: str):
+        if token in self.tokens:
+            self.tokens.pop(token, None)
+            self._save_tokens()
+
+    # ---- 登录限流 ----
+    def is_locked(self) -> bool:
+        window = timedelta(minutes=max(config.web_console_login_fail_window_minutes, 1))
+        now = datetime.now()
+        self._login_fails = [t for t in self._login_fails if now - t < window]
+        return len(self._login_fails) >= max(config.web_console_login_max_fails, 1)
+
+    def record_fail(self):
+        self._login_fails.append(datetime.now())
+
+    def reset_fails(self):
+        self._login_fails = []
 
 auth_manager = AuthManager()
 
@@ -820,19 +898,39 @@ if app:
 
     @app.post("/web_console/api/login")
     async def login(data: dict):
+        if auth_manager.is_locked():
+            return {"error": "登录尝试过于频繁，请稍后再试", "code": 429}
+
         code = data.get("code")
         password = data.get("password")
-        
+        remember = bool(data.get("remember"))
+
         if code:
             if auth_manager.verify_code(code):
-                return {"token": auth_manager.token}
+                auth_manager.reset_fails()
+                return {"token": auth_manager.generate_token(remember), "remember": remember}
+            auth_manager.record_fail()
             return {"error": "验证码错误或已过期", "code": 401}
         elif password:
             if auth_manager.verify_password(password):
-                return {"token": auth_manager.token}
+                auth_manager.reset_fails()
+                return {"token": auth_manager.generate_token(remember), "remember": remember}
+            auth_manager.record_fail()
             return {"error": "密码错误", "code": 401}
-            
+
         return {"error": "请输入验证码或密码", "code": 400}
+
+    @app.post("/web_console/api/logout")
+    async def logout(request: Request):
+        token = request.headers.get("Authorization") or request.query_params.get("token")
+        if token:
+            auth_manager.revoke_token(token)
+        return {"msg": "已退出登录"}
+
+    @app.get("/web_console/api/auth/check", dependencies=[Depends(check_auth)])
+    async def auth_check():
+        # 供前端在加载时校验本地保存的令牌是否仍然有效（免密登录）
+        return {"ok": True}
 
     @app.get("/web_console/api/status", dependencies=[Depends(check_auth)])
     async def get_system_status():

@@ -78,6 +78,22 @@
         }
         .nav-item:hover { background: var(--nav-item-hover); color: white; }
         .nav-item.active { background: var(--nav-item-hover); color: var(--primary-color); }
+        .nav-item svg { width: 22px; height: 22px; display: block; }
+
+        /* 日志级别筛选按钮 */
+        .log-chip {
+            padding: 3px 12px; border-radius: 999px; cursor: pointer; font-size: 0.78em;
+            border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-secondary);
+            transition: all 0.15s; user-select: none; line-height: 1.6;
+        }
+        .log-chip:hover { border-color: var(--primary-color); }
+        .log-chip.active { color: #fff; border-color: transparent; }
+        .log-chip.active[data-level="ALL"] { background: var(--primary-color); }
+        .log-chip.active[data-level="DEBUG"] { background: #6a9955; }
+        .log-chip.active[data-level="INFO"] { background: #0078d4; }
+        .log-chip.active[data-level="SUCCESS"] { background: #2e8b57; }
+        .log-chip.active[data-level="WARNING"] { background: #b8860b; }
+        .log-chip.active[data-level="ERROR"] { background: #c0392b; }
 
         /* 内容容器 */
         #content-wrapper { flex: 1; display: flex; overflow: hidden; position: relative; }
@@ -160,6 +176,14 @@
             color: var(--text-secondary); cursor: pointer; text-decoration: none; transition: all 0.2s;
         }
         .btn-icon:hover { background: var(--primary-color); color: white; border-color: var(--primary-color); }
+        .btn-icon svg { width: 16px; height: 16px; display: block; }
+        #theme-icon svg { width: 15px; height: 15px; display: block; }
+
+        /* 设置页 */
+        .settings-group { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 4px 20px; margin-bottom: 20px; box-shadow: var(--shadow); max-width: 760px; }
+        .settings-title { font-weight: 600; padding: 14px 0 6px; color: var(--text-secondary); font-size: 0.85em; }
+        .setting-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-top: 1px solid var(--border-color); }
+        .settings-title + .setting-item { border-top: none; }
         .btn-config { 
             padding: 6px 16px; border-radius: 6px; border: 1px solid var(--primary-color); 
             background: transparent; color: var(--primary-color); cursor: pointer; font-weight: 500;
@@ -508,6 +532,7 @@
             }
             
             .nav-item { flex: 1; height: auto; padding: 10px 0; border-radius: 0; font-size: 28px; }
+            .nav-item svg { width: 24px; height: 24px; }
             
             #content-wrapper { order: 1; height: calc(100vh - var(--nav-height)); }
 
@@ -560,7 +585,7 @@
                 <p style="font-size: 0.85em; color: #666; margin: 0;">验证码将发送至管理员 QQ</p>
                 <div style="display: flex; gap: 10px;">
                     <input type="text" id="code-input" placeholder="6 位验证码" maxlength="6">
-                    <button id="send-code-btn" style="padding: 10px; background: #0078d4; color: white; border: none; border-radius: 6px; cursor: pointer; min-width: 100px;">获取</button>
+                    <button id="send-code-btn" style="padding: 10px; background: #0078d4; color: white; border: none; border-radius: 6px; cursor: pointer; min-width: 110px;">获取验证码</button>
                 </div>
             </div>
 
@@ -569,18 +594,34 @@
                 <input type="password" id="password-input" placeholder="管理员密码">
             </div>
 
-            <button id="login-btn" style="width: 100%; padding: 12px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1.1em; font-weight: bold; margin-top: 10px;">立即登录</button>
+            <label id="remember-row" style="display: flex; align-items: center; gap: 8px; font-size: 0.85em; color: var(--text-secondary); cursor: pointer; user-select: none; margin-top: 4px;">
+                <input type="checkbox" id="remember-check" style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--primary-color);">
+                <span>记住此设备，下次免密登录</span>
+            </label>
+            <button id="login-btn" style="width: 100%; padding: 12px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1.1em; font-weight: bold; margin-top: 6px;">立即登录</button>
             <div id="login-msg" style="font-size: 0.9em; min-height: 1.2em;"></div>
         </div>
     </div>
     <div id="app">
         <div id="nav-bar">
-            <div class="nav-item active" data-page="home" onclick="showPage('home')" title="首页">🏠</div>
-            <div class="nav-item" data-page="chat" onclick="showPage('chat')" title="聊天">💬</div>
-            <div class="nav-item" data-page="plugins" onclick="showPage('plugins')" title="插件管理">🧩</div>
-            <div class="nav-item" data-page="logs" onclick="showPage('logs')" title="日志">📜</div>
-            <div class="nav-item" data-page="personification" onclick="showPage('personification')" title="拟人插件">🤖</div>
-            <div class="nav-item" data-page="settings" onclick="showPage('settings')" title="设置">⚙️</div>
+            <div class="nav-item active" data-page="home" onclick="showPage('home')" title="首页">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg>
+            </div>
+            <div class="nav-item" data-page="chat" onclick="showPage('chat')" title="聊天">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.5 8.5 0 0 1-.9-3.8A8.38 8.38 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/></svg>
+            </div>
+            <div class="nav-item" data-page="plugins" onclick="showPage('plugins')" title="插件管理">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 7h5a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-5"/><path d="M10 3v3a2 2 0 0 0 2 2h0a2 2 0 0 0 2-2V3"/><path d="M3 10h3a2 2 0 0 0 2-2v0a2 2 0 0 0-2-2H3"/></svg>
+            </div>
+            <div class="nav-item" data-page="logs" onclick="showPage('logs')" title="日志">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l5 5v13a0 0 0 0 1 0 0H6a0 0 0 0 1 0 0z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h6"/></svg>
+            </div>
+            <div class="nav-item" data-page="personification" onclick="showPage('personification')" title="拟人插件">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="8" width="14" height="11" rx="2"/><path d="M12 8V4"/><circle cx="12" cy="3" r="1"/><path d="M9 13h0"/><path d="M15 13h0"/></svg>
+            </div>
+            <div class="nav-item" data-page="settings" onclick="showPage('settings')" title="设置">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </div>
         </div>
         <div id="content-wrapper">
             <!-- 首页/仪表盘 -->
@@ -590,7 +631,7 @@
                         <div style="font-weight: bold; font-size: 1.2em;">仪表盘</div>
                         <div style="display: flex; align-items: center; gap: 15px;">
                             <button id="theme-toggle-btn" onclick="toggleThemeManual()" style="background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-main); padding: 5px 12px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 0.9em; transition: all 0.2s;">
-                                <span id="theme-icon">🌙</span> <span id="theme-text">深色模式</span>
+                                <span id="theme-icon" style="display:inline-flex;"></span> <span id="theme-text">深色模式</span>
                             </button>
                         </div>
                     </div>
@@ -599,10 +640,10 @@
                             <!-- 机器人状态卡片 -->
                             <div style="background: var(--bg-card); padding: 25px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: var(--shadow); display: flex; flex-direction: column;">
                                 <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
-                                    <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;">🤖 机器人状态</h3>
+                                    <h3 style="margin: 0; display: flex; align-items: center; gap: 8px;">机器人状态</h3>
                                     <div style="display: flex; gap: 8px;">
-                                        <button onclick="handleBotAction('reboot')" class="btn-icon" title="重启 Bot" style="color: #ffc107; border-color: #ffc107; background: rgba(255, 193, 7, 0.1); font-size: 1.2em; font-weight: bold; line-height: 1;">↻</button>
-                                        <button onclick="handleBotAction('shutdown')" class="btn-icon" title="关闭 Bot" style="color: #dc3545; border-color: #dc3545; background: rgba(220, 53, 69, 0.1); font-size: 1.2em; font-weight: bold; line-height: 1;">⏻</button>
+                                        <button onclick="handleBotAction('reboot')" class="btn-icon" title="重启 Bot" style="color: #ffc107; border-color: #ffc107; background: rgba(255, 193, 7, 0.1);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v5h-5"/></svg></button>
+                                        <button onclick="handleBotAction('shutdown')" class="btn-icon" title="关闭 Bot" style="color: #dc3545; border-color: #dc3545; background: rgba(220, 53, 69, 0.1);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v9"/><path d="M6.4 6.4a8 8 0 1 0 11.2 0"/></svg></button>
                                     </div>
                                 </div>
                                 <div id="bot-status-container" style="flex: 1;">
@@ -612,7 +653,7 @@
                             
                             <!-- 设备运行状态 -->
                             <div style="background: var(--bg-card); padding: 25px; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: var(--shadow);">
-                                <h3 style="margin-top: 0; display: flex; align-items: center; gap: 8px;">💻 设备运行情况</h3>
+                                <h3 style="margin-top: 0; display: flex; align-items: center; gap: 8px;">设备运行情况</h3>
                                 <div id="system-status-container">
                                     <div class="status-item" style="margin-bottom: 15px;">
                                         <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
@@ -734,12 +775,18 @@
             <!-- 日志页面 -->
             <div id="page-logs" class="page">
                 <div class="main-view">
-                    <div class="page-header">
-                        <div style="font-weight: bold; font-size: 1.2em;">NoneBot 日志</div>
-                        <div style="display: flex; gap: 10px;">
-                            <button onclick="fetchLogs()" style="padding: 5px 12px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">刷新</button>
-                            <button id="btn-download-log" onclick="downloadFullLog()" style="padding: 5px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;" title="下载完整运行日志">下载日志</button>
-                            <button onclick="document.getElementById('log-viewer').innerHTML = ''" style="padding: 5px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">清屏</button>
+                    <div class="page-header" style="flex-direction: column; align-items: stretch; height: auto; gap: 10px; padding-top: 12px; padding-bottom: 12px;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+                            <div style="font-weight: bold; font-size: 1.2em;">NoneBot 日志</div>
+                            <div style="display: flex; gap: 10px;">
+                                <button onclick="fetchLogs()" style="padding: 5px 12px; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">刷新</button>
+                                <button id="btn-download-log" onclick="downloadFullLog()" style="padding: 5px 12px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;" title="下载完整运行日志">下载日志</button>
+                                <button onclick="document.getElementById('log-viewer').innerHTML = ''" style="padding: 5px 12px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9em;">清屏</button>
+                            </div>
+                        </div>
+                        <div id="log-filter-bar" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <span style="font-size: 0.82em; color: var(--text-secondary);">级别筛选</span>
+                            <!-- 级别筛选按钮由 JS 渲染 -->
                         </div>
                     </div>
                     <div class="page-content" style="background: #1e1e1e; padding: 0; overflow: hidden; display: flex; flex-direction: column;">
@@ -758,11 +805,21 @@
                     </div>
                     <div class="page-content">
                         <div class="settings-group">
+                            <div class="settings-title">账户</div>
+                            <div class="setting-item">
+                                <div>
+                                    <div style="font-weight: 500;">登录状态</div>
+                                    <div style="font-size: 0.85em; color: var(--text-secondary);">退出后将吊销当前设备的登录令牌，需重新登录。</div>
+                                </div>
+                                <button onclick="handleLogout()" style="padding: 6px 16px; background: transparent; color: #dc3545; border: 1px solid #dc3545; border-radius: 6px; cursor: pointer; font-weight: 500;">退出登录</button>
+                            </div>
+                        </div>
+                        <div class="settings-group">
                             <div class="settings-title">关于</div>
                             <div class="setting-item">
                                 <div>
                                     <div style="font-weight: 500;">NoneBot Web Console</div>
-                                    <div style="font-size: 0.85em; color: var(--text-secondary);">版本 v0.2.2</div>
+                                    <div style="font-size: 0.85em; color: var(--text-secondary);">版本 v0.3.0</div>
                                 </div>
                             </div>
                         </div>
@@ -1018,7 +1075,7 @@
             const errorArea = document.createElement('div');
             errorArea.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:var(--bg-card); border:1px solid var(--border-color); padding:25px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.5); z-index:10001; max-width:90vw; width:500px;';
             errorArea.innerHTML = `
-                <h3 style="margin-top:0; color:#dc3545;">❌ 操作失败</h3>
+                <h3 style="margin-top:0; color:#dc3545;">操作失败</h3>
                 <div style="margin:15px 0; white-space:pre-wrap; font-size:14px; max-height:300px; overflow-y:auto; border-left:4px solid #dc3545; padding-left:15px;">${data.error}</div>
                 <button onclick="this.parentElement.remove()" class="btn-primary" style="width:100%;">确定</button>
             `;
@@ -1038,18 +1095,65 @@
             }
         }
 
+        // ===== 日志级别筛选 =====
+        const LOG_LEVELS = ['DEBUG', 'INFO', 'SUCCESS', 'WARNING', 'ERROR'];
+        // 默认显示全部级别
+        let logLevelFilter = new Set(LOG_LEVELS);
+
+        function renderLogFilterBar() {
+            const bar = document.getElementById('log-filter-bar');
+            if (!bar || bar.dataset.ready === '1') return;
+            const allActive = LOG_LEVELS.every(l => logLevelFilter.has(l));
+            const chips = [];
+            chips.push(`<span class="log-chip ${allActive ? 'active' : ''}" data-level="ALL" onclick="toggleLogLevel('ALL')">全部</span>`);
+            for (const lv of LOG_LEVELS) {
+                chips.push(`<span class="log-chip ${logLevelFilter.has(lv) ? 'active' : ''}" data-level="${lv}" onclick="toggleLogLevel('${lv}')">${lv}</span>`);
+            }
+            bar.querySelectorAll('.log-chip').forEach(c => c.remove());
+            bar.insertAdjacentHTML('beforeend', chips.join(''));
+            bar.dataset.ready = '1';
+        }
+
+        function refreshLogFilterChips() {
+            const bar = document.getElementById('log-filter-bar');
+            if (!bar) return;
+            const allActive = LOG_LEVELS.every(l => logLevelFilter.has(l));
+            bar.querySelectorAll('.log-chip').forEach(chip => {
+                const lv = chip.dataset.level;
+                const on = lv === 'ALL' ? allActive : logLevelFilter.has(lv);
+                chip.classList.toggle('active', on);
+            });
+        }
+
+        function toggleLogLevel(level) {
+            if (level === 'ALL') {
+                const allActive = LOG_LEVELS.every(l => logLevelFilter.has(l));
+                logLevelFilter = allActive ? new Set() : new Set(LOG_LEVELS);
+            } else if (logLevelFilter.has(level)) {
+                logLevelFilter.delete(level);
+            } else {
+                logLevelFilter.add(level);
+            }
+            refreshLogFilterChips();
+            applyLogFilter();
+        }
+
+        function applyLogFilter() {
+            const viewer = document.getElementById('log-viewer');
+            if (!viewer) return;
+            viewer.querySelectorAll('.log-entry').forEach(div => {
+                const lv = div.dataset.level || 'INFO';
+                div.style.display = logLevelFilter.has(lv) ? '' : 'none';
+            });
+        }
+
         async function fetchLogs() {
             const viewer = document.getElementById('log-viewer');
+            renderLogFilterBar();
             try {
                 const res = await authorizedFetch('/web_console/api/logs');
                 const logs = await res.json();
-                // 如果是手动刷新，或者初次加载，清空当前视图
-                if (!viewer.querySelector('.log-entry') || viewer.innerText.includes('正在加载') || viewer.innerText.includes('失败')) {
-                     viewer.innerHTML = '';
-                }
-                
-                // 这里简单处理：全量刷新时清空重绘，或者我们可以优化为合并。
-                // 为了简单起见，fetchLogs 我们还是全量替换吧，但是使用 appendLog 的逻辑来生成 HTML
+                // 全量替换，复用 appendLog 渲染逻辑
                 viewer.innerHTML = '';
                 logs.forEach(log => appendLog(log, false)); // false 表示不自动滚动，最后统一滚动
                 viewer.scrollTop = viewer.scrollHeight;
@@ -1060,58 +1164,69 @@
 
         function appendLog(log, autoScroll = true) {
             const viewer = document.getElementById('log-viewer');
-            
+
             // 清理非日志内容的提示信息
             if (viewer.firstElementChild && !viewer.firstElementChild.classList.contains('log-entry')) {
                  viewer.innerHTML = '';
             }
 
+            const level = (log.level || 'INFO').toUpperCase();
             let color = '#d4d4d4';
-            if (log.level === 'ERROR') color = '#f44747';
-            else if (log.level === 'WARNING') color = '#cca700';
-            else if (log.level === 'SUCCESS') color = '#6a9955';
-            else if (log.level === 'DEBUG') color = '#b5cea8';
-            else if (log.level === 'INFO') color = '#d4d4d4';
+            if (level === 'ERROR') color = '#f44747';
+            else if (level === 'WARNING') color = '#cca700';
+            else if (level === 'SUCCESS') color = '#6a9955';
+            else if (level === 'DEBUG') color = '#b5cea8';
+            else if (level === 'INFO') color = '#d4d4d4';
 
             const div = document.createElement('div');
             div.className = 'log-entry';
+            div.dataset.level = level;
             div.style.marginBottom = '4px';
             div.innerHTML = `
                 <span style="color: #888;">[${log.time}]</span>
-                <span style="color: ${color}; font-weight: bold; margin: 0 5px;">${log.level.padEnd(7)}</span>
+                <span style="color: ${color}; font-weight: bold; margin: 0 5px;">${level.padEnd(7)}</span>
                 <span style="color: #569cd6;">${log.module}</span>
                 <span style="color: #ce9178;"> - ${log.message}</span>
             `;
-            
+
+            // 应用当前级别筛选
+            if (!logLevelFilter.has(level)) {
+                div.style.display = 'none';
+            }
+
             // 检查是否滚动到底部
             const isScrolledToBottom = viewer.scrollHeight - viewer.clientHeight <= viewer.scrollTop + 50;
-            
+
             viewer.appendChild(div);
-            
+
             // 限制日志条数，防止页面卡顿
             if (viewer.children.length > 1000) {
                 viewer.removeChild(viewer.firstElementChild);
             }
 
-            if (autoScroll && isScrolledToBottom) {
+            if (autoScroll && isScrolledToBottom && div.style.display !== 'none') {
                 viewer.scrollTop = viewer.scrollHeight;
             }
         }
+
+        // 主题图标（SVG，跟随文字色）
+        const THEME_ICON_SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+        const THEME_ICON_MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
 
         // 主题切换
         function toggleTheme(isDark) {
             const icon = document.getElementById('theme-icon');
             const text = document.getElementById('theme-text');
-            
+
             if (isDark) {
                 document.documentElement.setAttribute('data-theme', 'dark');
                 localStorage.setItem('web-console-theme', 'dark');
-                if (icon) icon.textContent = '☀️';
+                if (icon) icon.innerHTML = THEME_ICON_SUN;
                 if (text) text.textContent = '浅色模式';
             } else {
                 document.documentElement.removeAttribute('data-theme');
                 localStorage.setItem('web-console-theme', 'light');
-                if (icon) icon.textContent = '🌙';
+                if (icon) icon.innerHTML = THEME_ICON_MOON;
                 if (text) text.textContent = '深色模式';
             }
 
@@ -1181,8 +1296,8 @@
                         </div>
                         <div class="store-desc" title="${p.desc}">${p.desc}</div>
                         <div class="store-meta">
-                            <span>👤 ${p.author}</span>
-                            <span>📦 ${p.version}</span>
+                            <span>作者 ${p.author}</span>
+                            <span>版本 ${p.version}</span>
                         </div>
                         <div class="store-footer">
                             <div style="display: flex; gap: 8px;">
@@ -1318,14 +1433,14 @@
                                                   <div class="plugin-footer">
                                                       <span class="plugin-tag ${label.class}">${label.text}</span>
                                                       <div class="plugin-actions">
-                                                          ${p.homepage ? `<a href="${p.homepage}" target="_blank" class="btn-icon" title="主页">🏠</a>` : ''}
-                                                          
-                                                          ${isEnabled ? 
-                                                              `<button onclick="handlePluginToggle('${p.module}', '${p.name}', false)" class="btn-icon" title="禁用" style="color: #ff9800; border-color: rgba(255, 152, 0, 0.2);">⛔</button>` :
-                                                              `<button onclick="handlePluginToggle('${p.module}', '${p.name}', true)" class="btn-icon" title="启用" style="color: #28a745; border-color: rgba(40, 167, 69, 0.2);">✅</button>`
+                                                          ${p.homepage ? `<a href="${p.homepage}" target="_blank" class="btn-icon" title="主页"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg></a>` : ''}
+
+                                                          ${isEnabled ?
+                                                              `<button onclick="handlePluginToggle('${p.module}', '${p.name}', false)" class="btn-icon" title="禁用" style="color: #ff9800; border-color: rgba(255, 152, 0, 0.2);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg></button>` :
+                                                              `<button onclick="handlePluginToggle('${p.module}', '${p.name}', true)" class="btn-icon" title="启用" style="color: #28a745; border-color: rgba(40, 167, 69, 0.2);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></button>`
                                                           }
                                                           
-                                                          <button onclick="handlePluginUninstall('${p.module}', '${p.name}')" class="btn-icon" title="卸载" style="color: #dc3545; border-color: rgba(220, 53, 69, 0.2);">🗑️</button>
+                                                          <button onclick="handlePluginUninstall('${p.module}', '${p.name}')" class="btn-icon" title="卸载" style="color: #dc3545; border-color: rgba(220, 53, 69, 0.2);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 14h10l1-14"/><path d="M10 11v6M14 11v6"/></svg></button>
                                                           <button onclick="openConfig('${p.id}')" class="btn-config" ${!isEnabled ? 'disabled style="opacity: 0.5; cursor: not-allowed;" title="需启用后才能配置"' : ''}>配置</button>
                                                       </div>
                                                   </div>
@@ -1438,7 +1553,7 @@
                 });
 
                 if (updates.length === 0) {
-                    listEl.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #999; padding: 40px;">所有插件已是最新版本 🎉</div>';
+                    listEl.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #999; padding: 40px;">所有插件已是最新版本</div>';
                     countEl.textContent = '暂无更新';
                 } else {
                     renderUpdates(updates);
@@ -1612,7 +1727,7 @@
                         <code style="font-size: 0.8em; color: #999; background: #f0f0f0; padding: 2px 4px; border-radius: 3px;">${key}</code>
                     </div>
                     <div style="margin-top: 8px;">${inputHtml}</div>
-                    ${item.description ? `<div style="font-size: 0.85em; color: #666; margin-top: 6px; padding: 8px; background: #f9f9f9; border-left: 3px solid #ddd; font-style: italic;">💡 注释: ${item.description}</div>` : ''}
+                    ${item.description ? `<div style="font-size: 0.85em; color: #666; margin-top: 6px; padding: 8px; background: #f9f9f9; border-left: 3px solid #ddd; font-style: italic;">注释: ${item.description}</div>` : ''}
                 `;
                 body.appendChild(div);
             }
@@ -1871,6 +1986,8 @@
             const password = document.getElementById('password-input').value.trim();
             
             const payload = {};
+            const rememberEl = document.getElementById('remember-check');
+            payload.remember = !!(rememberEl && rememberEl.checked);
             if (currentLoginTab === 'code') {
                 if (code.length !== 6) {
                     loginMsg.style.color = '#dc3545';
@@ -1929,10 +2046,37 @@
             }, 5000);
         }
 
+        // 退出登录：吊销服务端令牌并回到登录页
+        async function handleLogout() {
+            try {
+                await fetch('/web_console/api/logout', {
+                    method: 'POST',
+                    headers: authToken ? { 'Authorization': authToken } : {}
+                });
+            } catch (e) { /* 忽略网络错误，仍然清理本地状态 */ }
+            if (appInterval) { clearInterval(appInterval); appInterval = null; }
+            if (ws) { ws.onclose = null; ws.close(); ws = null; }
+            showLogin();
+        }
+
+        // 校验本地保存的令牌是否仍然有效（用于免密登录）
+        async function validateSavedToken() {
+            if (!authToken) return false;
+            try {
+                const res = await fetch('/web_console/api/auth/check', {
+                    headers: { 'Authorization': authToken }
+                });
+                return res.ok;
+            } catch (e) {
+                return false;
+            }
+        }
+
         // 初始化
-        window.onload = () => {
+        window.onload = async () => {
             initTheme();
-            if (authToken) {
+            if (await validateSavedToken()) {
+                // 令牌有效，免密进入
                 hideLogin();
                 initApp();
             } else {

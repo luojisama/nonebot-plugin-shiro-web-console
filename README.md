@@ -28,9 +28,21 @@ pip install nonebot-plugin-shiro-web-console
 web_console_password=your_password  # 设置固定登录密码
 web_console_log_retention_minutes=60  # Web 控制台日志缓存保留时长（分钟）
 web_console_log_cleanup_interval_seconds=60  # 过期日志自动清理间隔（秒）
+web_console_session_days=7  # 普通登录令牌有效期（天）
+web_console_remember_days=30  # 勾选“记住此设备”后免密登录令牌有效期（天）
+web_console_login_max_fails=5  # 登录失败限流：窗口内最大失败次数
+web_console_login_fail_window_minutes=5  # 登录失败限流窗口（分钟）
 ```
 
 ## 更新日志
+
+### v0.3.0
+- **新增**：登录令牌持久化到本地存储，Bot 重启后仍然有效；勾选「记住此设备」即可免密登录，页面加载时自动校验令牌。
+- **新增**：支持多设备同时在线（多令牌），并提供「退出登录」吊销当前设备令牌；修改密码会吊销全部令牌。
+- **新增**：登录失败限流，窗口内连续失败达到上限后临时锁定，防止暴力猜解。
+- **新增**：日志页支持按级别（DEBUG / INFO / SUCCESS / WARNING / ERROR）筛选，可多选与「全部」一键切换，对历史与实时日志同时生效。
+- **优化**：大幅减少界面 emoji，导航与操作按钮统一改为线性 SVG 图标，跟随主题配色；补全设置页样式，整体向生产级观感看齐。
+- **优化**：密码校验改用 `secrets.compare_digest` 常量时间比较；令牌使用更长的随机长度。
 
 ### v0.2.2
 - **新增**：改为通过拟人插件导出的 `web_console_api` 稳定接口读取在线版 `nonebot-plugin-shiro-personification` 与本地版 `personification`。
